@@ -20,9 +20,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # ---- Miniconda + libmamba solver (fast solves for the old TF1 stack) -------
+# Recent Miniconda gates Anaconda's default channels (pkgs/main, pkgs/r) behind a
+# Terms-of-Service acceptance; accept it up front so the base install AND the
+# `conda env create` steps below (both env files list the `defaults` channel) can
+# solve non-interactively.
 RUN wget -qO /tmp/miniconda.sh \
         https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
     bash /tmp/miniconda.sh -b -p /opt/conda && rm /tmp/miniconda.sh && \
+    /opt/conda/bin/conda tos accept --override-channels \
+        --channel https://repo.anaconda.com/pkgs/main \
+        --channel https://repo.anaconda.com/pkgs/r && \
     /opt/conda/bin/conda install -n base -y conda-libmamba-solver && \
     /opt/conda/bin/conda config --set solver libmamba && \
     /opt/conda/bin/conda clean -afy

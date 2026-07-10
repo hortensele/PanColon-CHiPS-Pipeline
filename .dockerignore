@@ -1,0 +1,47 @@
+# Keep the build context small and the image lean. Weights are MOUNTED at
+# /weights (not baked), slides at /data, outputs at /out — none belong in the image.
+
+# Trained weights + bundle build artifacts
+weights/
+weights_bundle/
+pancolon_chips_weights.tar.gz
+*.tar.gz
+*.zip
+
+# Pipeline outputs / intermediates
+out/
+work/
+pipeline_work/
+outputs/
+results/
+
+# Whole-slide images / data blobs (test slides live under examples/, mounted at /data)
+examples/**/*.svs
+examples/**/*.tif
+examples/**/*.tiff
+examples/**/*.ndpi
+examples/**/*.mrxs
+examples/**/*.btf
+*.h5
+*.h5ad
+*.pt
+*.pkl
+
+# Git + local dev cruft
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+.DS_Store
+
+# Web app runtime artifacts (the SLURM UI is not used in the container path)
+webapp/_uploads/
+webapp/_run_config.yaml
+
+# Logs
+logs/
+slurm-*.out
+*.out
+*.err
