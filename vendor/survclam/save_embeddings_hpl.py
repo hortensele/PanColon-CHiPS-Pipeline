@@ -250,6 +250,17 @@ def main():
         print(f"  meta_field={meta_field}, rep_key={rep_key}, tiles_key={tiles_key}")
 
         with h5py.File(h5_path, "r") as h5:
+            # Tolerate HPL set-prefixed keys (e.g. 'complete_slides' for 'slides',
+            # 'complete_img_z_latent' for 'img_z_latent'). Resolve against the H5
+            # and write back into the spec so the write pass uses the same keys.
+            def _resolve(req):
+                if req in h5:
+                    return req
+                m = [k for k in h5.keys() if k.endswith("_" + req)]
+                return m[0] if len(m) == 1 else req
+            meta_field = spec["meta_field"] = _resolve(meta_field)
+            rep_key    = spec["rep_key"]    = _resolve(rep_key)
+            tiles_key  = spec["tiles_key"]  = _resolve(tiles_key)
             for k in (meta_field, rep_key, tiles_key):
                 if k not in h5:
                     raise KeyError(f"H5 missing required dataset '{k}'. keys={list(h5.keys())}")
