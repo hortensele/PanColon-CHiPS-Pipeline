@@ -20,7 +20,7 @@ set -euo pipefail
 
 # ---- EDIT ME: where the weights bundle is hosted -------------------------
 PUBLIC_URL="CHANGE_ME_https://zenodo.org/record/XXXXXXX/files/pancolon_chips_weights.tar.gz"
-EXPECTED_SHA256="CHANGE_ME"   # `sha256sum <bundle>`; leave CHANGE_ME to skip the check
+EXPECTED_SHA256="ba75493401ecb259a732d18e0856e1e7ba931e690c686916868eec4f02deb380"   # sha256 of pancolon_chips_weights.tar.gz
 # --------------------------------------------------------------------------
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

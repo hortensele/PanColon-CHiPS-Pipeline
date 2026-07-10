@@ -4,6 +4,10 @@ weights/survclam/
 weights/*.tar*
 weights/*.zip
 
+# Weights-bundle build artifacts (produced by scripts/build_weights_bundle.sh)
+weights_bundle/
+pancolon_chips_weights.tar.gz
+
 # Pipeline outputs / intermediates
 work/
 pipeline_work/

@@ -39,9 +39,13 @@ Each upstream project keeps its own license; consult the upstream repositories.
 - **Note:** the SLURM/`sb_*` wrapper scripts are intentionally NOT vendored; the
   pipeline calls the canonical `run_*.py` scripts directly with resolved args.
 
-## `vendor/survclam/`  — SurvCLAM (CLAM-family survival engine)
+## `vendor/survclam/`  — SurvCLAM (our survival engine, built on CLAM)
 
-- **Upstream:** https://github.com/tsirigoslab/SurvCLAM
+- **Origin:** SurvCLAM is our own survival-analysis engine, developed for the
+  PanColon-CHiPS study on top of **CLAM** (Lu et al., Mahmood Lab —
+  https://github.com/mahmoodlab/CLAM). It is not a third-party dependency like
+  DeepPATH/HPL; please cite CLAM if you use it.
+- **Source:** https://github.com/tsirigoslab/SurvCLAM
 - **Used for:** steps 6–8 (.pt feature store, survival inference, attention/CHiPS).
 - **Vendored:** root `save_embeddings_hpl.py`, `eval.py`, `main.py`,
   `extract_last_layer_and_attention.py`, `create_splits_*.py`, the `README_*.md`

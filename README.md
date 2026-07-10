@@ -1,21 +1,30 @@
 # PanColon-CHiPS-Pipeline
 
-End-to-end **inference** pipeline that takes colon-cancer whole-slide images
-(WSIs) from your own cohort and produces, per slide/patient, a **CHiPS**
-(Computational Histological Prognostic Score) and an attention heatmap overlay —
-using the trained HPL-PanColon encoder and the SurvCLAM survival model from the
-PanColon-CHiPS study. It is designed to be cloned, pointed at a folder of slides,
-and run **locally on a GPU workstation** or **on a SLURM cluster**.
+Give this pipeline a folder of colon-cancer whole-slide images (WSIs) and it
+produces, per slide/patient:
 
-> This repo is inference-only. It does not train anything. Trained weights are
-> downloaded separately (see [Weights](#3-download-the-trained-weights)).
+- a **CHiPS** score (Computational Histological Prognostic Score),
+- **HPC** assignments (Histological Phenotype Clusters) painted onto the slide, and
+- a **SurvCLAM attention** heatmap,
+
+then packages them into a **self-contained viewer** you open in a browser with
+nothing but Python — no GPU, no OpenSlide, no install. It uses the trained
+HPL-PanColon encoder and the SurvCLAM survival model from the PanColon-CHiPS study.
+
+> **Inference only.** This repo does not train anything. The trained weights are
+> downloaded separately (see [2. Download the weights](#2-download-the-trained-weights)).
 
 ```
 WSIs ──▶ tile ──▶ hdf5 ──▶ HPL encoder ──▶ HPC assign + artifact filter
      ──▶ .pt store ──▶ SurvCLAM folds ──▶ CHiPS score ──▶ attention overlays
+     ──▶ export ──▶ static results viewer (open in any browser)
 ```
 
-## The eight steps
+The shipped CHiPS model is the **imaging-only DFS** model (16 leave-one-institution-out
+folds); the score is the mean per-fold risk. **No clinical or outcome data is
+required** to score your slides.
+
+### The eight pipeline steps
 
 | # | step | what it does | tool | env |
 |---|------|--------------|------|-----|
@@ -28,162 +37,123 @@ WSIs ──▶ tile ──▶ hdf5 ──▶ HPL encoder ──▶ HPC assign + 
 | 7 | `infer_survival` | score every slide with the CHiPS fold checkpoints | SurvCLAM | survclam |
 | 8 | `attention_map` | per-tile attention + CHiPS-annotated overlays | SurvCLAM | survclam |
 
-The shipped CHiPS model is the **imaging-only DFS** model (16 leave-one-institution-out
-folds); the score is the mean per-fold risk. No clinical/outcome data is required to
-score slides.
+A 9th step, `export`, turns those outputs into the browser viewer (below).
 
-## Hardware & software
+---
 
-- **GPU** strongly recommended (steps 3, 7, 8 use it). CPU-only works for small
-  cohorts but step 3 is slow.
-- Linux + `conda`. OpenSlide is installed via the conda envs.
-- Two conda environments (created once, below). The pipeline is split because
-  DeepPATH/HPL are TensorFlow-1.x era and SurvCLAM is PyTorch — they cannot share
-  one environment.
+## What you need
+
+- **Linux, x86-64.** This is a Linux/x86 stack (DeepPATH/HPL are TensorFlow-1.x
+  era). On Apple-Silicon/Windows you'd need Docker Desktop's x86 emulation
+  (CPU-only, slow). **The results viewer has no such constraint — it runs in any
+  browser on any OS.**
+- **A GPU is strongly recommended** (steps 3, 7, 8 use it). CPU-only works for
+  small cohorts but step 3 (encoding) is slow.
+- **One way to run the compute** — pick whichever you have:
+  - **Docker** (a workstation), or
+  - **Singularity/Apptainer** (an HPC cluster, no root needed), or
+  - **conda** (a machine with conda but no container runtime).
+
+  The container path is recommended because it bundles both environments and all
+  dependencies. Full container instructions live in
+  **[docker/README.md](docker/README.md)**; the essentials are below.
+
+---
 
 ## Quickstart
 
-### 1. Create the two environments
+### 1. Get the code
+
+```bash
+git clone <this-repo-url> PanColon-CHiPS-Pipeline
+cd PanColon-CHiPS-Pipeline
+```
+
+### 2. Download the trained weights
+
+```bash
+bash scripts/download_weights.sh
+```
+
+This fetches and unpacks the HPL encoder, the reference Leiden clustering, and the
+16 SurvCLAM CHiPS fold checkpoints into `weights/` (~4 GB). The download URL is
+configured inside that script; if you get a "URL is not set" error the bundle
+hasn't been published yet — ask the maintainer for the Zenodo link (or see
+[For maintainers](#for-maintainers) to build it).
+
+### 3. Run — pick one path
+
+The two conda environments exist because DeepPATH/HPL are TensorFlow-1.x and
+SurvCLAM is PyTorch; they cannot share one environment. The container builds both
+for you.
+
+#### Path A — Container (recommended)
+
+**Docker:**
+
+```bash
+docker build -t pancolon-chips:latest -f docker/Dockerfile .
+
+docker run --rm --gpus all \
+  -v /path/to/slides:/data \
+  -v $PWD/weights:/weights \
+  -v /path/to/output:/out \
+  pancolon-chips:latest
+```
+
+**Singularity/Apptainer** (no root; typical on HPC):
+
+```bash
+apptainer build --fakeroot pancolon.sif docker/pancolon.def
+apptainer run --nv \
+  -B /path/to/slides:/data -B $PWD/weights:/weights -B /path/to/output:/out \
+  pancolon.sif
+```
+
+Either one runs steps 1–8 **and** `export`, writing everything (including the
+viewer) to `/out`. See [docker/README.md](docker/README.md) for CPU-only runs,
+troubleshooting, and build notes.
+
+#### Path B — conda (no container)
 
 ```bash
 conda env create -f envs/env_tiling.yml      # steps 1-5 (TensorFlow)
 conda env create -f envs/env_survclam.yml     # steps 6-8 (PyTorch)
-```
 
-**Already have the TF stack as a cluster module?** You can skip building
-`env_tiling` and point the tiling stage at an existing environment module
-instead. In the config, set `envs.tiling_module` (it takes precedence over
-`envs.tiling`), e.g. on NYU BigPurple:
-
-```yaml
-envs:
-  tiling_module: "condaenvs/gpu/pathgan_SSL"   # `module load`ed for steps 1-5
-```
-
-The driver then `module load`s it for steps 1–5 rather than `conda activate`.
-(`module_init` can point at your `modules.sh` if `module` isn't on PATH in
-non-interactive shells.)
-
-### 2. Configure
-
-```bash
 cp config/pipeline.local.example.yaml config/pipeline.yaml
 $EDITOR config/pipeline.yaml     # set paths.wsi_dir, paths.work_dir, envs.conda_sh
+
+bash scripts/run_local.sh config/pipeline.yaml     # activates the right env per step
+python pancolon_pipeline.py export --config config/pipeline.yaml
 ```
 
-Every path and parameter lives in that one file. `--dry-run` (below) prints the
-exact commands so you can sanity-check before running anything.
-
-### 3. Download the trained weights
+Every path and parameter lives in that one config file. Useful variants:
 
 ```bash
-$EDITOR scripts/download_weights.sh    # set PUBLIC_URL (+ SHA256)
-bash scripts/download_weights.sh
-```
-
-This unpacks the HPL encoder, the reference Leiden clustering, and the SurvCLAM
-CHiPS fold checkpoints into `weights/`.
-
-**Publishing the weights (maintainers):** `scripts/build_weights_bundle.sh
---config config/pipeline.yaml` assembles that bundle from the lab installs —
-the encoder, the reference clustering (both reference h5s + folds pickle + the
-`cohort`/`cohort_cleaned` Leiden results), and the 16 DFS CHiPS fold checkpoints
-— verifies every file, writes `SHA256SUMS`, and tars
-`pancolon_chips_weights.tar.gz` ready to upload to Zenodo. It prints the tar's
-SHA256 to paste into `download_weights.sh`. Set `HPL_REF_DIR` (and confirm
-`infer.exp_code` matches the shipped run) before running.
-
-### 4. Run
-
-Local (the driver activates the right env for each step):
-
-```bash
-bash scripts/run_local.sh config/pipeline.yaml
-# or a sub-range:
+# preview the exact commands without running anything (no envs needed):
+python pancolon_pipeline.py all --config config/pipeline.yaml --dry-run --no-env-switch
+# run a sub-range or a single step:
 python pancolon_pipeline.py all --config config/pipeline.yaml --from project --to infer_survival
-# a single step:
 python pancolon_pipeline.py infer_survival --config config/pipeline.yaml
 ```
 
-SLURM (submits the whole chain with `afterok` dependencies):
+### 4. Explore the results in your browser
+
+The run produces a **results bundle** at `<work_dir>/bundle` (or `/out/bundle`
+from the container). It is fully self-contained — copy or zip it to any machine
+and open it with only Python:
 
 ```bash
-bash scripts/slurm/submit_all.sh config/pipeline.yaml
+cd bundle && ./view.sh        # then open the printed http://127.0.0.1:8000
 ```
 
-Preview without executing (works anywhere, no envs needed):
+Per slide you get **three synchronized deep-zoom panels** — original H&E, HPC
+assignments, and SurvCLAM attention — that pan and zoom **together**, alongside
+the slide's CHiPS score and HPC composition. A **Cohort** tab shows the CHiPS
+score table and distribution across all your slides. No GPU or OpenSlide needed
+on the viewing machine.
 
-```bash
-python pancolon_pipeline.py all --config config/pipeline.yaml --dry-run --no-env-switch
-```
-
-## Sharing with collaborators (portable run + zero-install viewer)
-
-For collaborators whose resources you don't control, the pipeline is packaged to
-run three ways from one recipe — **Docker**, **Singularity/Apptainer** (HPC, no
-root), or **plain conda** — and it exports a **self-contained results viewer**
-that opens with nothing but Python. See **[docker/README.md](docker/README.md)**
-for the full instructions; the short version:
-
-```bash
-# build once (Docker shown; Apptainer: apptainer build --fakeroot pancolon.sif docker/pancolon.def)
-docker build -t pancolon-chips:latest -f docker/Dockerfile .
-
-# run: slides in, results (incl. the viewer) out
-docker run --rm --gpus all \
-  -v /path/to/slides:/data -v /path/to/weights:/weights -v /path/to/out:/out \
-  pancolon-chips:latest
-```
-
-This runs steps 1–8 then `pancolon_pipeline.py export`, which writes a
-**results bundle** to `<work_dir>/bundle` — deep-zoom H&E, HPC, and attention
-layers per slide, plus the cohort CSV and a copied static viewer. Open it
-anywhere (no GPU/openslide needed):
-
-```bash
-cd <work_dir>/bundle && ./view.sh    # then open the printed http://127.0.0.1:8000
-```
-
-The viewer shows, per slide, three synchronized deep-zoom panels (original H&E,
-HPC assignments, SurvCLAM attention) that pan/zoom together, plus the CHiPS score
-and HPC composition; a cohort tab has the score table and distribution. You can
-also run `export` on its own after a normal run:
-`python pancolon_pipeline.py export --config config/pipeline.yaml`.
-
-## Interactive app (upload slides, run on the cluster, explore results)
-
-A web UI wraps the pipeline: point at (or upload) one or more whole-slide images,
-**submit all eight steps to SLURM**, watch each step run, then explore the results
-**per image** — the CHiPS score, the HPC phenotype distribution, and a zoomable
-attention map.
-
-Run it on a **login node** (it calls `sbatch`/`squeue`/`sacct`), in the survclam
-env, then SSH-tunnel the port:
-
-```bash
-conda activate pancolon_survclam      # flask + openslide + torch + pyyaml
-bash scripts/run_webapp.sh config/pipeline.yaml --port 5000
-# from your laptop:  ssh -L 5000:127.0.0.1:5000 <login-node>
-# then open http://127.0.0.1:5000
-```
-
-What it does:
-
-- **Submit** writes a per-run config and submits the `stage.sbatch` dependency
-  chain (GPU for `project`/`infer_survival`/`attention_map`, CPU otherwise); the
-  step tracker follows `sacct`/`squeue` and streams each step's SLURM log. Tick
-  **Dry run** to preview the exact `sbatch` commands without submitting.
-- **Per-image explorer** (once the run finishes): a cohort CHiPS table plus a
-  slide picker. Each slide shows its CHiPS score/percentile/tertile, an HPC
-  composition chart, and an [OpenSeadragon](https://openseadragon.github.io/)
-  deep-zoom view of the WSI (served from openslide) with a toggleable
-  **attention ⇄ HPC** heatmap overlay and an opacity slider.
-
-It binds to localhost and does no compute in the browser (it submits to SLURM and
-reads back the pipeline's output files), so the downloaded weights must be
-reachable from the cluster. OpenSeadragon is vendored under
-`webapp/static/vendor/` — no CDN or internet is needed at runtime. The static
-overview in `docs/pipeline_overview.html` is the non-interactive counterpart.
+---
 
 ## Outputs
 
@@ -191,65 +161,125 @@ Everything lands under `paths.work_dir`:
 
 ```
 work_dir/
-  tiles/                       step 1
-  hdf5/hdf5_<cohort>_he_complete.h5          step 2
-  hpl/hdf5_<cohort>_..._filtered.h5          step 3  (img_z_latent)
-  clusters/<cohort>_hpc_assignment.csv       steps 4-5 (filtered per-tile HPC)
-  clusters/<cohort>_manifest.csv             per-slide manifest
+  tiles/                                       step 1
+  hdf5/hdf5_<cohort>_he_complete.h5            step 2
+  hpl/hdf5_<cohort>_..._filtered.h5            step 3  (img_z_latent)
+  clusters/<cohort>_hpc_assignment.csv         steps 4-5 (filtered per-tile HPC)
+  clusters/<cohort>_manifest.csv               per-slide manifest
   datasets/<cohort>/HPL_PANCOLON_20x/pt_files/*.pt   step 6
-  survclam/chips_scores.csv                  step 7  <-- the CHiPS scores
-  attention/                                 step 8  (per-tile attention + overlays)
+  survclam/chips_scores.csv                    step 7  <-- the CHiPS scores
+  attention/                                   step 8  (per-tile attention + overlays)
+  bundle/                                       export  (the browser viewer)
 ```
 
 `chips_scores.csv` columns: `case_id, chips_score, chips_percentile,
-chips_tertile, n_folds, risk_fold0…`. For stratification use `chips_percentile`
-or `chips_tertile` (cohort-relative), since the raw score is an uncentered Cox
+chips_tertile, n_folds, risk_fold0…`. **For stratification use `chips_percentile`
+or `chips_tertile`** (cohort-relative), since the raw score is an uncentered Cox
 log-hazard.
 
-## Scoring cohorts with vs. without outcomes
+### Scoring with vs. without outcomes
 
 - **No outcomes (pure scoring):** leave `paths.clinical_csv` blank. Step 5 writes
   a minimal manifest (dummy time/event) so the model runs; you still get CHiPS.
 - **With outcomes (optional evaluation):** point `paths.clinical_csv` at a CSV
   carrying `slide_id`, `case_id`, and the `infer.time_col`/`infer.event_col`
-  columns to additionally get C-index/KM from step 7.
+  columns to additionally get C-index / KM from step 7.
 
-## Attention overlays
+### Static figure alternative
 
-After step 8, use the **interactive app** above for a zoomable attention/HPC
-overlay per slide, or open `notebooks/attention_overlay.ipynb` (survclam env) to
-render static per-slide H&E + attention + HPC panels annotated with each slide's
-CHiPS score, adapted from the study's WSI overlay figure. Both read the same
-per-slide outputs via `pancolon/overlay_render.py`.
+Prefer a static figure to the interactive viewer? Open
+`notebooks/attention_overlay.ipynb` (survclam env) to render per-slide
+H&E + attention + HPC panels annotated with each slide's CHiPS score. It reads the
+same per-slide outputs via `pancolon/overlay_render.py`.
+
+---
+
+## Configuration reference
+
+A few values in `config/pipeline.yaml` identify the shipped model and reference
+clustering. They come **pre-filled for the imaging-only DFS model** — only change
+them if you deliberately bundle a different model:
+
+- `cluster.resolution`, `cluster.artifact_cluster_ids` — the Leiden resolution and
+  artifact HPC IDs of the reference clustering.
+- `infer.exp_code`, `infer.time_col`, `infer.k` — identify the CHiPS checkpoints.
+- `paths.wsi_dir`, `paths.work_dir`, `envs.conda_sh` — **you set these** to your
+  slides folder, an output folder, and your conda's `conda.sh` (conda path only).
 
 ## Layout
 
 ```
 pancolon_pipeline.py      CLI entry point
 pancolon/                 orchestration package (config, steps, CHiPS aggregation,
-                          SLURM submit/monitor, per-slide overlay rendering)
-webapp/                   Flask app: submit to SLURM + per-image results explorer
-config/                   pipeline.yaml + filled example
+                          export, per-slide overlay rendering)
+viewer/                   the static browser viewer copied into every results bundle
+docker/                   Dockerfile + Apptainer def + container README
+config/                   pipeline.yaml, container config, filled example
 envs/                     the two conda env specs
-scripts/                  download_weights, run_local, run_webapp, vendor_sync, slurm/
+scripts/                  download_weights, run_local, build_weights_bundle, …
 vendor/                   code-only copies of DeepPATH / HPL / SurvCLAM (see VENDOR_MANIFEST.md)
 weights/                  downloaded trained weights (gitignored)
+webapp/                   optional SLURM web UI (see below)
 notebooks/                attention overlay figure
 ```
 
-## Configuration you must confirm
+---
 
-A few values in `config/pipeline.yaml` are model-specific and should match the
-shipped reference clustering / checkpoints:
+## Optional: SLURM web UI (if you run your own cluster)
 
-- `cluster.resolution` and `cluster.artifact_cluster_ids` — the Leiden resolution
-  and the artifact HPC IDs of the reference clustering.
-- `infer.exp_code`, `infer.time_col`, `infer.k` — identify the CHiPS checkpoints.
+If you already operate a **SLURM cluster**, `webapp/` is a browser UI that submits
+the eight steps to SLURM, tracks each step, and then explores results per image.
+It is an alternative to the command-line run above — not required, and unrelated to
+the portable container path.
 
-These ship pre-filled for the imaging-only DFS model; only change them if you
-bundle a different model.
+```bash
+conda activate pancolon_survclam
+bash scripts/run_webapp.sh config/pipeline.yaml --port 5000
+# from your laptop:  ssh -L 5000:127.0.0.1:5000 <login-node>   →  http://127.0.0.1:5000
+```
+
+It binds to localhost, submits an `sbatch` dependency chain (GPU for
+`project`/`infer_survival`/`attention_map`), streams each step's SLURM log, and
+serves a per-image explorer with a live OpenSeadragon deep-zoom view of each WSI
+and a toggleable attention ⇄ HPC overlay. OpenSeadragon is vendored under
+`webapp/static/vendor/` — no internet needed at runtime. The downloaded weights
+must be reachable from the cluster.
+
+---
+
+## For maintainers
+
+Content below is for whoever **publishes** the weights or refreshes the vendored
+tools — collaborators can ignore it.
+
+**Building the weights bundle for Zenodo.** `scripts/build_weights_bundle.sh
+--config config/pipeline.yaml` assembles the publishable bundle from the source
+installs — the HPL encoder, the reference clustering (both anchor h5s + the
+`cohort`/`cohort_cleaned` fold-1 Leiden adatas + folds pickle), and the 16 DFS
+CHiPS fold checkpoints — into the `weights/` layout, verifies every file, writes
+`SHA256SUMS`, and tars `pancolon_chips_weights.tar.gz` ready to upload. It prints
+the tar's SHA256. Then set `PUBLIC_URL` and `EXPECTED_SHA256` in
+`scripts/download_weights.sh` so collaborators' `download_weights.sh` works. The
+source paths default to the lab installs and are overridable via env vars
+(`HPL_INSTALL`, `HPL_REF_DIR`, `SURVCLAM_RUNS_SRC`, …) at the top of the script.
+
+**Using an existing TF module instead of building `env_tiling`.** On a cluster
+that already provides the TensorFlow stack as a module, set `envs.tiling_module`
+in the config (it takes precedence over `envs.tiling`); the driver `module load`s
+it for steps 1–5 rather than `conda activate`. `envs.module_init` can point at a
+`modules.sh` if `module` isn't on PATH in non-interactive shells.
+
+**Refreshing the vendored tools.** `scripts/vendor_sync.sh` re-pulls the
+code-only copies of DeepPATH / HPL / SurvCLAM; see `vendor/VENDOR_MANIFEST.md`.
 
 ## Citation
 
-PanColon-CHiPS study — *citation coming soon*. Upstream tools: DeepPATH,
-Histomorphological-Phenotype-Learning (HPL), SurvCLAM (see `vendor/VENDOR_MANIFEST.md`).
+PanColon-CHiPS study — *citation coming soon*.
+
+**SurvCLAM** is our own survival-analysis engine (developed as part of this study),
+built on top of **CLAM** (Lu et al., Mahmood Lab —
+https://github.com/mahmoodlab/CLAM); please cite CLAM if you use it. It is
+orchestrated alongside two third-party upstream tools: **DeepPATH** (Coudray et
+al.) and **Histomorphological-Phenotype-Learning / HPL** (Claudio Quiros et al.).
+Each vendored tool keeps its own upstream license; see
+`vendor/VENDOR_MANIFEST.md`.
