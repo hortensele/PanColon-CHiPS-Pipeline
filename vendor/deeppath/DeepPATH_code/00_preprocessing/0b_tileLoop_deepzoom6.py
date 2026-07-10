@@ -1620,12 +1620,13 @@ if __name__ == '__main__':
 			if os.path.exists(output + "_files"):
 				print("Image %s already tiled" % opts.basenameJPG)
 				continue
-			# try:
-			if True:
+			try:
 				DeepZoomStaticTiler(filename, output, opts.format, opts.tile_size, opts.overlap, opts.limit_bounds, opts.quality, opts.workers, opts.with_viewer, opts.Bkg, opts.basenameJPG, opts.xmlfile, opts.mask_type, opts.ROIpc, '', ImgExtension, opts.SaveMasks, opts.Mag, opts.normalize, opts.Fieldxml, opts.pixelsize, opts.pixelsizerange, Adj_WindowSize, resize_ratio, Best_level, Adj_overlap, opts.Std).run()
-			#except Exception as e:
-			#	print("Failed to process file %s, error: %s" % (filename, sys.exc_info()[0]))
-			#	print(e)
+			except Exception as e:
+				# Skip non-slide files in the input dir (README, .DS_Store, etc.)
+				# instead of crashing the whole tiling step.
+				print("[tile] skipping %s (not a readable slide): %s" % (filename, e))
+				continue
 	'''
 	dz_queue.join()
 	for i in range(opts.max_number_processes):
