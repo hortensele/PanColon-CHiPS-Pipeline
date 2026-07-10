@@ -34,7 +34,7 @@ def data_specs(data_path):
 # Filter out given indexes.
 def create_complete_h5(data_path, num_tiles, key_dict, indexes_to_remove, override):
     h5_complete_path = data_path.replace('.h5', '_filtered.h5')
-    if override:
+    if override and os.path.isfile(h5_complete_path):
         os.remove(h5_complete_path)
     if os.path.isfile(h5_complete_path):
         print('File already exists, if you want to overwrite enable the flag --override')
