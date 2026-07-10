@@ -145,7 +145,7 @@ def _activation(cfg, key):
 def step_tile(cfg, opts):
     deeppath = _tool(cfg, "deeppath")
     tiler = os.path.join(deeppath, "DeepPATH_code", "00_preprocessing",
-                         "0b_tileLoop_deepzoom4.py")
+                         "0b_tileLoop_deepzoom6.py")
     wsi_dir = require(cfg, "paths.wsi_dir")
     out_dir = _mkdir(opts, _work(cfg, "tiles"))
     t = cfg.get("tile", {})

@@ -33,7 +33,10 @@ import time
 import os
 import sys
 #import dicom
-import pydicom as dicom
+try:
+    import pydicom as dicom
+except ImportError:
+    dicom = None  # DICOM input needs pydicom; SVS/TIFF path never touches dicom.read_file
 # from scipy.misc import imsave
 from imageio import imwrite as imsave
 # from scipy.misc import imread
