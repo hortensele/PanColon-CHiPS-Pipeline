@@ -178,11 +178,16 @@ def step_to_hdf5(cfg, opts):
     out_h5 = _hdf5_path(cfg)
     _mkdir(opts, os.path.dirname(out_h5))
     t = cfg.get("tile", {})
+    # Step 1 wrote tiles under <slide>_files/<mag>.0/; the converter globs
+    # <slide>_files/str(--mag)/ (mode 1), so --mag MUST match the tiling
+    # magnification or it silently finds 0 images. Its default (2.016) is wrong.
+    mag = cfg.get("magnification", "20x").rstrip("x")
     argv = [
         "python", conv,
         "--input_path", tiles_dir,
         "--output", out_h5,
         "--wSize", t.get("tile_size", 224),
+        "--mag", mag,
         "--label", "he",
         "--subset", "complete",
     ]
