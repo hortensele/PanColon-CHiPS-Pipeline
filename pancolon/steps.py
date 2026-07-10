@@ -47,22 +47,48 @@ def _tool(cfg, which) -> str:
     return require(cfg, f"tools.{which}_root")
 
 
-def _hdf5_path(cfg) -> str:
+def _hpl_res(cfg) -> str:
+    """HPL run tag, e.g. h224_w224_n3_zdim128."""
+    p = cfg.get("project", {})
+    sz = p.get("img_size", 224)
+    return f"h{sz}_w{sz}_n3_zdim{p.get('z_dim', 128)}"
+
+
+def _hpl_patches_dir(cfg) -> str:
+    """Where HPL's Data() looks for the cohort tile h5s:
+    hdf5/datasets/<ds>/he/patches_h<sz>_w<sz>/."""
     ds = cfg.get("dataset_name", "cohort")
-    return _work(cfg, "hdf5", f"hdf5_{ds}_he_complete.h5")
+    sz = cfg.get("project", {}).get("img_size", 224)
+    return _work(cfg, "hdf5", "datasets", ds, "he", f"patches_h{sz}_w{sz}")
+
+
+def _hpl_results_dir(cfg) -> str:
+    """Where run_representationspathology_projection.py writes projected h5s:
+    hpl/results/<model>/<ds>/<res>/."""
+    ds = cfg.get("dataset_name", "cohort")
+    model = cfg.get("weights", {}).get("hpl_model_name", "BarlowTwins_3")
+    return _work(cfg, "hpl", "results", model, ds, _hpl_res(cfg))
+
+
+def _hdf5_path(cfg) -> str:
+    """Step 2 output: raw tile HDF5, written into HPL's datasets layout so the
+    projection step's Data() can find it."""
+    ds = cfg.get("dataset_name", "cohort")
+    return str(Path(_hpl_patches_dir(cfg), f"hdf5_{ds}_he_complete.h5"))
 
 
 def _projected_h5(cfg) -> str:
-    """Step 3 output: raw projected embeddings (before artifact removal)."""
+    """Step 3 output: projected embeddings (before artifact removal). The
+    projection writes basename(real_hdf5) into hpl/results/<model>/<ds>/<res>/."""
     ds = cfg.get("dataset_name", "cohort")
-    return _work(cfg, "hpl", f"hdf5_{ds}_he_complete.h5")
+    return str(Path(_hpl_results_dir(cfg), f"hdf5_{ds}_he_complete.h5"))
 
 
 def _filtered_h5(cfg) -> str:
     """Step 4 output: artifact tiles removed. remove_indexes_h5.py appends
-    '_filtered' to the input h5 stem, so this must match that convention."""
+    '_filtered' to the input h5 stem in the same dir, so this must match."""
     ds = cfg.get("dataset_name", "cohort")
-    return _work(cfg, "hpl", f"hdf5_{ds}_he_complete_filtered.h5")
+    return str(Path(_hpl_results_dir(cfg), f"hdf5_{ds}_he_complete_filtered.h5"))
 
 
 def _pt_features_root(cfg) -> str:
@@ -201,20 +227,33 @@ def step_to_hdf5(cfg, opts):
 
 def step_project(cfg, opts):
     hpl = _tool(cfg, "hpl")
-    proj = os.path.join(hpl, "run_representationspathology_projection_dataset.py")
+    # Individual-file projection (projects one --real_hdf5), per HPL's
+    # README_additional_cohort recipe — NOT the _dataset variant (train/val/test).
+    proj = os.path.join(hpl, "run_representationspathology_projection.py")
     ckpt = require(cfg, "weights.hpl_checkpoint")
     model = cfg.get("weights", {}).get("hpl_model_name", "BarlowTwins_3")
+    ds = cfg.get("dataset_name", "cohort")
     p = cfg.get("project", {})
+    complete_h5 = _hdf5_path(cfg)
+    # HPL's Data() reads datasets/<ds>/he/patches_hXXX_wXXX/hdf5_<ds>_he_train.h5
+    # for the model init (num_samples). Our inference cohort only has a "complete"
+    # set, so alias it as the train set (same tiles) so Data.training loads.
+    if not opts.dry_run and os.path.exists(complete_h5):
+        train_h5 = os.path.join(_hpl_patches_dir(cfg), f"hdf5_{ds}_he_train.h5")
+        if not os.path.lexists(train_h5):
+            os.symlink(os.path.basename(complete_h5), train_h5)
     _mkdir(opts, _work(cfg, "hpl"))
     argv = [
         "python", proj,
         "--checkpoint", ckpt,
-        "--dataset", cfg.get("dataset_name", "cohort"),
+        "--dataset", ds,
+        "--marker", "he",
+        "--real_hdf5", complete_h5,
         "--model", model,
         "--img_size", p.get("img_size", 224),
         "--z_dim", p.get("z_dim", 128),
         "--batch_size", p.get("batch_size", 64),
-        "--main_path", hpl,
+        "--main_path", _work(cfg, "hpl"),
         "--dbs_path", _work(cfg, "hdf5"),
     ]
     return run_stage(cfg, step="project", env=_activation(cfg, TILING_ENV_KEY)[0], modules=_activation(cfg, TILING_ENV_KEY)[1], argv=argv,
