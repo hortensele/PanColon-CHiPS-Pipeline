@@ -40,6 +40,13 @@ def _pick(df_cols, cfg_override, key):
     for cand in _COL_CANDIDATES[key]:
         if cand.lower() in lower:
             return lower[cand.lower()]
+    # HPL prefixes every column with the set name (complete_slides, train_tiles,
+    # complete_tiles, ...); match a column whose name ends with _<candidate>.
+    for cand in _COL_CANDIDATES[key]:
+        cl = cand.lower()
+        for lc, orig in lower.items():
+            if lc.endswith("_" + cl):
+                return orig
     # leiden columns are often "leiden_<res>"; match by prefix for hpc
     if key == "hpc":
         for c in df_cols:
