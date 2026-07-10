@@ -1081,9 +1081,12 @@ class Generic_WSIFamilyDataset(Dataset):
         val_slides   = _resolve_slide_indices(val_ids)
         test_slides  = _resolve_slide_indices(test_ids) if (test_ids is not None and len(test_ids) > 0) else []
 
-        train_split = _slice_by_slides(train_slides, "train")
-        val_split   = _slice_by_slides(val_slides,   "val")
-        test_split  = _slice_by_slides(test_slides,  "test") if len(test_slides) > 0 else None
+        # An external-inference split may populate only one set (e.g. all 'test').
+        # Return None for empty sets instead of raising, mirroring 'test' below;
+        # _build_requested_split_df skips None splits and only uses which_sets.
+        train_split = _slice_by_slides(train_slides, "train") if len(train_slides) > 0 else None
+        val_split   = _slice_by_slides(val_slides,   "val")   if len(val_slides)   > 0 else None
+        test_split  = _slice_by_slides(test_slides,  "test")  if len(test_slides)  > 0 else None
         return train_split, val_split, test_split
 
     ############################################################

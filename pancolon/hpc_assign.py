@@ -123,6 +123,11 @@ def build_assignment_table(cfg, out_csv, dry_run=False):
             f"Columns present: {list(df.columns)}. Set cluster.columns in config."
         )
     std = df.rename(columns=colmap)[[v for v in colmap.values()]].copy()
+    # DeepPATH names tile dirs '<slide>_files', and that suffix leaks into the
+    # slide id stored in the H5. Strip it so slide_id matches the .pt filenames
+    # (build_pt runs with --strip_files_suffix) and the original WSI filename.
+    if "slide_id" in std.columns:
+        std["slide_id"] = std["slide_id"].astype(str).str.replace(r"_files$", "", regex=True)
     std.to_csv(out_csv, index=False)
     print(f"[assign_hpc] wrote per-tile HPC table ({len(std)} tiles) -> {out_csv}")
 
