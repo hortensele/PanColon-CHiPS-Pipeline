@@ -389,6 +389,7 @@ def step_infer_survival(cfg, opts):
         "--pt_id_col", inf.get("pt_id_col", "slide_id"),
         "--feature_dir", feature_dir,
         "--embed_dim", b.get("embed_dim", 128),
+        "--model_size", inf.get("model_size", "big"),
         "--fold", -1,
         "--split", "all",
         "--k", inf.get("k", 16),

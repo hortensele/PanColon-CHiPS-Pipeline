@@ -124,6 +124,9 @@ infer:
   exp_code: "HPL_PANCOLON_20x__dfs__lr2e4_reg1e5_do025_clip1_plateau_p4_big"
   seed: 1
   task_type: "survival"
+  # CLAM attention size of the shipped checkpoints (exp_code ends in _big ->
+  # attention hidden dim 384). eval.py defaults to 'small' (256), so set it here.
+  model_size: "big"
   time_col: "dfs_event_data"
   event_col: "dfs_event_ind"
   covariate_cols: ""             # imaging-only model => empty. "Age,Sex" for fused variant.
