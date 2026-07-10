@@ -1,0 +1,87 @@
+# ==========================================================================
+# Example filled-in config for a single Linux GPU workstation.
+# Copy to config/pipeline.yaml and adjust the CHANGE_ME paths.
+# ==========================================================================
+repo_root: ""
+dataset_name: "demo_cohort"
+magnification: "20x"
+
+paths:
+  wsi_dir: "/data/demo/wsi"
+  work_dir: "/data/demo/pipeline_work"
+  clinical_csv: ""            # pure scoring, no labels
+  slide_id_col: "slide_id"
+
+envs:
+  conda_sh: "/home/me/miniconda3/etc/profile.d/conda.sh"
+  tiling: "pancolon_tiling"
+  survclam: "pancolon_survclam"
+  # Optional: `module load` a stage instead of conda-activating it (takes
+  # precedence over the conda env for that stage). Empty = use the conda env.
+  tiling_module: ""
+  survclam_module: ""
+  module_init: ""
+
+tools:
+  deeppath_root: "vendor/deeppath"
+  hpl_root: "vendor/hpl"
+  survclam_root: "vendor/survclam"
+
+weights:
+  root: "weights"
+  hpl_checkpoint: "weights/hpl/BarlowTwins_3.ckt"
+  hpl_model_name: "BarlowTwins_3"
+  hpl_reference_h5: "weights/hpl/reference/hdf5_colon_reference_he_complete_filtered.h5"
+  hpl_folds_pickle: "weights/hpl/reference/colon_reference_folds.pkl"
+  survclam_runs_root: "weights/survclam/runs"
+
+tile:
+  tile_size: 224
+  overlap: 0
+  background_threshold: 50
+  workers: 8
+
+project:
+  rep_key: "img_z_latent"
+  tiles_key: "tiles"
+  z_dim: 128
+  img_size: 224
+  batch_size: 64
+
+cluster:
+  resolution: 2.0
+  meta_field: "hpc"
+  artifact_cluster_ids: []
+
+build_pt:
+  model_key: "HPL_PANCOLON_20x"
+  meta_field: "slides"
+  embed_dim: 128
+
+infer:
+  runs_root_dataset: "colon_united"
+  exp_code: "HPL_PANCOLON_20x__dfs__lr2e4_reg1e5_do025_clip1_plateau_p4_big"
+  seed: 1
+  task_type: "survival"
+  time_col: "dfs_event_data"
+  event_col: "dfs_event_ind"
+  covariate_cols: ""
+  cov_fusion: "concat"
+  bag_level: "patient"
+  pt_id_col: "slide_id"
+  k: 16
+  chips_folds: "all"
+
+attention:
+  which_sets: "test"
+  overlay_dpi: 150
+
+slurm:
+  account: ""
+  gpu_partition: "gpu4_short"
+  cpu_partition: "cpu_short"
+  gpu_gres: "gpu:1"
+  gpu_mem: "100G"
+  cpu_mem: "60G"
+  time_gpu: "12:00:00"
+  time_cpu: "12:00:00"

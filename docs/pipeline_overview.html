@@ -1,0 +1,409 @@
+<title>PanColon-CHiPS Pipeline</title>
+<style>
+  :root {
+    --paper: #ffffff;
+    --bg: #f7f5fa;
+    --ink: #1e1a26;
+    --muted: #6d6580;
+    --line: #e6e1ee;
+    --eosin: #c02f6b;      /* H&E eosin — magenta, Stage 2 */
+    --hema: #4d40a6;       /* H&E hematoxylin — violet, Stage 1 */
+    --eosin-soft: #fbe9f1;
+    --hema-soft: #ebe8fa;
+    --shadow: 0 1px 2px rgba(30,26,38,.05), 0 8px 24px rgba(30,26,38,.06);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #1f1b2a;
+      --bg: #141019;
+      --ink: #f1edf7;
+      --muted: #a79fb6;
+      --line: #302943;
+      --eosin: #f0619b;
+      --hema: #9d8ff4;
+      --eosin-soft: #38202f;
+      --hema-soft: #241f3e;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #ffffff; --bg: #f7f5fa; --ink: #1e1a26; --muted: #6d6580;
+    --line: #e6e1ee; --eosin: #c02f6b; --hema: #4d40a6;
+    --eosin-soft: #fbe9f1; --hema-soft: #ebe8fa;
+    --shadow: 0 1px 2px rgba(30,26,38,.05), 0 8px 24px rgba(30,26,38,.06);
+  }
+  :root[data-theme="dark"] {
+    --paper: #1f1b2a; --bg: #141019; --ink: #f1edf7; --muted: #a79fb6;
+    --line: #302943; --eosin: #f0619b; --hema: #9d8ff4;
+    --eosin-soft: #38202f; --hema-soft: #241f3e;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: clamp(1.5rem, 4vw, 4rem) clamp(1.1rem, 4vw, 2rem) 5rem; }
+
+  a { color: var(--eosin); }
+  code, .mono { font-family: var(--mono); }
+
+  /* ---- Header ---- */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--eosin);
+    margin: 0 0 1rem;
+    display: flex; align-items: center; gap: .6rem;
+  }
+  .eyebrow::before {
+    content: ""; width: 26px; height: 2px; background: var(--eosin); display: inline-block;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 6vw, 3.4rem);
+    line-height: 1.04;
+    letter-spacing: -.02em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+    font-weight: 800;
+  }
+  .lede {
+    font-size: clamp(1.05rem, 2.4vw, 1.28rem);
+    color: var(--muted);
+    max-width: 46ch;
+    margin: 0 0 2rem;
+  }
+  .flow {
+    font-family: var(--mono);
+    font-size: .82rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: .85rem 1rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    box-shadow: var(--shadow);
+  }
+  .flow .arw { color: var(--eosin); padding: 0 .35em; }
+
+  /* ---- Stat strip ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 2.5rem 0 0;
+  }
+  .stat { background: var(--paper); padding: 1.1rem 1.2rem; }
+  .stat .n { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat .n .u { font-size: .9rem; color: var(--muted); font-weight: 600; margin-left: .25em; }
+  .stat .l { font-family: var(--mono); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-top: .2rem; }
+
+  /* ---- Section headings ---- */
+  section { margin-top: 3.5rem; }
+  .sec-head { display: flex; align-items: baseline; gap: .8rem; margin-bottom: 1.4rem; }
+  .sec-head h2 { font-size: 1.35rem; margin: 0; letter-spacing: -.01em; font-weight: 750; }
+  .sec-head .k { font-family: var(--mono); font-size: .72rem; color: var(--muted); letter-spacing: .1em; }
+
+  /* ---- Stage banners ---- */
+  .stage {
+    display: flex; align-items: center; gap: .75rem;
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
+    padding: .5rem .85rem; border-radius: 8px; margin: 0 0 0 -.2rem;
+    font-weight: 600;
+  }
+  .stage.s1 { color: var(--hema); background: var(--hema-soft); }
+  .stage.s2 { color: var(--eosin); background: var(--eosin-soft); }
+  .stage .env { margin-left: auto; opacity: .85; text-transform: none; letter-spacing: .02em; }
+
+  /* ---- Pipeline spine ---- */
+  .spine { position: relative; margin: 1rem 0 0; padding-left: 3.2rem; }
+  .spine::before {
+    content: ""; position: absolute; left: 15px; top: 8px; bottom: 8px; width: 2px;
+    background: linear-gradient(var(--hema) 0%, var(--hema) 55%, var(--eosin) 62%, var(--eosin) 100%);
+    opacity: .5;
+  }
+  .step { position: relative; margin-bottom: .9rem; }
+  .node {
+    position: absolute; left: -3.2rem; top: 2px;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-weight: 700; font-size: .9rem;
+    background: var(--paper); color: var(--ink);
+    border: 2px solid var(--accent);
+    z-index: 1;
+  }
+  .step.s1 { --accent: var(--hema); }
+  .step.s2 { --accent: var(--eosin); }
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    box-shadow: var(--shadow);
+  }
+  .card .top { display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap; margin-bottom: .35rem; }
+  .card .name { font-family: var(--mono); font-weight: 700; font-size: 1rem; color: var(--ink); }
+  .card .tool {
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid currentColor; border-radius: 20px; padding: .1rem .55rem;
+    opacity: .9;
+  }
+  .card p { margin: 0; color: var(--muted); font-size: .95rem; }
+  .io {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    margin-top: .7rem; font-family: var(--mono); font-size: .76rem;
+  }
+  .io .chip { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .18rem .5rem; color: var(--ink); }
+  .io .to { color: var(--accent); font-weight: 700; }
+
+  /* ---- Generic cards grid ---- */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .panel {
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.25rem 1.35rem; box-shadow: var(--shadow);
+  }
+  .panel h3 { margin: 0 0 .2rem; font-size: 1rem; }
+  .panel h3 .mono { color: var(--muted); font-weight: 500; font-size: .8rem; }
+  .panel p { margin: .3rem 0 0; color: var(--muted); font-size: .92rem; }
+  .panel ul { margin: .6rem 0 0; padding-left: 1.1rem; color: var(--muted); font-size: .92rem; }
+  .panel li { margin: .25rem 0; }
+  .panel li b { color: var(--ink); font-weight: 650; }
+
+  /* ---- Code block ---- */
+  pre {
+    background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.15rem; overflow-x: auto; box-shadow: var(--shadow);
+    font-family: var(--mono); font-size: .82rem; line-height: 1.75; margin: 0;
+    color: var(--ink);
+  }
+  pre .c { color: var(--muted); }
+  pre .p { color: var(--eosin); }
+  .run-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+  .run-grid h3 { font-family: var(--mono); font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 .6rem; }
+
+  .note {
+    display: flex; gap: .7rem; margin-top: 1.4rem;
+    background: var(--eosin-soft); border: 1px solid var(--line); border-radius: 10px;
+    padding: .9rem 1.1rem; font-size: .9rem; color: var(--ink);
+  }
+  .note b { color: var(--eosin); }
+
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+  footer .mono { color: var(--muted); }
+
+  @media (max-width: 520px) {
+    .spine { padding-left: 2.6rem; }
+    .node { left: -2.6rem; width: 28px; height: 28px; }
+    .spine::before { left: 13px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Computational Pathology · Inference Pipeline</p>
+    <h1>PanColon-CHiPS Pipeline</h1>
+    <p class="lede">From a folder of colon-cancer whole-slide images to a per-patient prognostic score and attention map — shareable, and runnable locally or on SLURM.</p>
+    <div class="flow" aria-label="Pipeline flow">
+      WSIs <span class="arw">→</span> tiles <span class="arw">→</span> HDF5 <span class="arw">→</span> HPL embeddings <span class="arw">→</span> HPC filter <span class="arw">→</span> .pt store <span class="arw">→</span> SurvCLAM folds <span class="arw">→</span> <b>CHiPS</b> + attention
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n">8</div><div class="l">Steps</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">Vendored tools</div></div>
+      <div class="stat"><div class="n">2</div><div class="l">Conda envs</div></div>
+      <div class="stat"><div class="n">16<span class="u">folds</span></div><div class="l">LOIO ensemble</div></div>
+      <div class="stat"><div class="n">20<span class="u">×</span></div><div class="l">Magnification</div></div>
+    </div>
+  </header>
+
+  <!-- ====================== PIPELINE ====================== -->
+  <section>
+    <div class="sec-head">
+      <h2>The eight steps</h2>
+      <span class="k">pancolon_pipeline.py &lt;step&gt;</span>
+    </div>
+
+    <div class="stage s1">Stage 1 · Tissue → Phenotypes<span class="env">env: pancolon_tiling · TensorFlow</span></div>
+    <div class="spine">
+
+      <div class="step s1">
+        <div class="node">1</div>
+        <div class="card">
+          <div class="top"><span class="name">tile</span><span class="tool">DeepPATH</span></div>
+          <p>Tile each whole-slide image into 224 px patches at 20× magnification, dropping background.</p>
+          <div class="io"><span class="chip">.svs / .ndpi / .tif</span><span class="to">→</span><span class="chip">tile pyramid</span></div>
+        </div>
+      </div>
+
+      <div class="step s1">
+        <div class="node">2</div>
+        <div class="card">
+          <div class="top"><span class="name">to_hdf5</span><span class="tool">DeepPATH</span></div>
+          <p>Pack the tiles into a single HDF5 tile store in HPL's expected format.</p>
+          <div class="io"><span class="chip">tiles/</span><span class="to">→</span><span class="chip">hdf5_&lt;cohort&gt;_he_complete.h5</span></div>
+        </div>
+      </div>
+
+      <div class="step s1">
+        <div class="node">3</div>
+        <div class="card">
+          <div class="top"><span class="name">project</span><span class="tool">HPL</span></div>
+          <p>Project every tile through the trained HPL <span class="mono">BarlowTwins_3</span> self-supervised encoder to get 128-dim embeddings.</p>
+          <div class="io"><span class="chip">tile HDF5</span><span class="to">→</span><span class="chip">img_z_latent embeddings</span></div>
+        </div>
+      </div>
+
+      <div class="step s1">
+        <div class="node">4</div>
+        <div class="card">
+          <div class="top"><span class="name">cluster_filter</span><span class="tool">HPL</span></div>
+          <p>Assign each tile to the shipped reference Leiden clustering — the histomorphological phenotype clusters (HPCs).</p>
+          <div class="io"><span class="chip">embeddings</span><span class="to">→</span><span class="chip">per-tile HPC labels</span></div>
+        </div>
+      </div>
+
+      <div class="step s1">
+        <div class="node">5</div>
+        <div class="card">
+          <div class="top"><span class="name">assign_hpc</span><span class="tool">built-in</span></div>
+          <p>Drop artifact clusters (pen marks, blur, folds) and write the filtered per-tile HPC table plus a per-slide manifest.</p>
+          <div class="io"><span class="chip">HPC labels</span><span class="to">→</span><span class="chip">filtered table + manifest</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage s2" style="margin-top:1.6rem;">Stage 2 · Phenotypes → Prognosis<span class="env">env: pancolon_survclam · PyTorch</span></div>
+    <div class="spine">
+
+      <div class="step s2">
+        <div class="node">6</div>
+        <div class="card">
+          <div class="top"><span class="name">build_pt</span><span class="tool">SurvCLAM</span></div>
+          <p>Convert the filtered HPL embeddings into a per-slide <span class="mono">.pt</span> feature store for the survival model.</p>
+          <div class="io"><span class="chip">embeddings h5</span><span class="to">→</span><span class="chip">pt_files/*.pt</span></div>
+        </div>
+      </div>
+
+      <div class="step s2">
+        <div class="node">7</div>
+        <div class="card">
+          <div class="top"><span class="name">infer_survival</span><span class="tool">SurvCLAM</span></div>
+          <p>Score every slide against all 16 leave-one-institution-out fold checkpoints; the <b>CHiPS</b> score is the mean per-fold risk.</p>
+          <div class="io"><span class="chip">.pt store</span><span class="to">→</span><span class="chip">chips_scores.csv</span></div>
+        </div>
+      </div>
+
+      <div class="step s2">
+        <div class="node">8</div>
+        <div class="card">
+          <div class="top"><span class="name">attention_map</span><span class="tool">SurvCLAM</span></div>
+          <p>Extract per-tile attention and render H&amp;E overlays annotated with each slide's CHiPS score.</p>
+          <div class="io"><span class="chip">.pt + tile coords</span><span class="to">→</span><span class="chip">attention overlays</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== WEIGHTS ====================== -->
+  <section>
+    <div class="sec-head">
+      <h2>Trained weights</h2>
+      <span class="k">scripts/download_weights.sh</span>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>HPL encoder <span class="mono">BarlowTwins_3</span></h3>
+        <p>Self-supervised tile encoder trained on the pan-colon cohort at 20×. Powers step 3.</p>
+      </div>
+      <div class="panel">
+        <h3>Reference HPC clustering</h3>
+        <p>The fixed Leiden clustering + folds that new tiles are assigned against in steps 4–5.</p>
+      </div>
+      <div class="panel">
+        <h3>SurvCLAM CHiPS folds</h3>
+        <p>16-fold imaging-only DFS survival model (no clinical covariates required). Drives steps 7–8.</p>
+      </div>
+    </div>
+    <div class="note">
+      <span>🔬</span>
+      <div><b>Imaging-only.</b> CHiPS is computed from histology alone, so collaborators can score slides with no clinical or outcome data. Providing an optional labels CSV additionally yields a C-index and Kaplan–Meier curves.</div>
+    </div>
+  </section>
+
+  <!-- ====================== RUN ====================== -->
+  <section>
+    <div class="sec-head">
+      <h2>Running it</h2>
+      <span class="k">one config drives everything</span>
+    </div>
+    <div class="run-grid">
+      <div>
+        <h3>Local · single GPU box</h3>
+        <pre><span class="c"># create the two envs once</span>
+conda env create -f envs/env_tiling.yml
+conda env create -f envs/env_survclam.yml
+
+<span class="c"># configure, then run all 8 steps</span>
+bash scripts/run_local.sh <span class="p">config/pipeline.yaml</span></pre>
+      </div>
+      <div>
+        <h3>SLURM · dependency chain</h3>
+        <pre><span class="c"># submits 8 jobs, each afterok the last</span>
+bash scripts/slurm/submit_all.sh <span class="p">config/pipeline.yaml</span>
+
+<span class="c"># preview commands without running</span>
+python pancolon_pipeline.py all \
+  --config <span class="p">config/pipeline.yaml</span> \
+  --dry-run --no-env-switch</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== OUTPUTS ====================== -->
+  <section>
+    <div class="sec-head">
+      <h2>What you get</h2>
+      <span class="k">under paths.work_dir/</span>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3><span class="mono">survclam/chips_scores.csv</span></h3>
+        <p>The headline result — one row per patient.</p>
+        <ul>
+          <li><b>chips_score</b> — mean risk across folds</li>
+          <li><b>chips_percentile</b> — cohort-relative rank</li>
+          <li><b>chips_tertile</b> — low / intermediate / high</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3><span class="mono">attention/</span></h3>
+        <p>Per-slide attention tensors and rendered overlays.</p>
+        <ul>
+          <li><b>chips_overlays.png</b> — H&amp;E, attention heatmap, and HPC panels titled with the CHiPS score</li>
+          <li>Rendered by <span class="mono">notebooks/attention_overlay.ipynb</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p><span class="mono">PanColon-CHiPS-Pipeline</span> — vendors DeepPATH, Histomorphological-Phenotype-Learning (HPL), and SurvCLAM. Inference only; trained weights ship separately. CHiPS = Computational Histological Prognostic Score.</p>
+  </footer>
+
+</div>

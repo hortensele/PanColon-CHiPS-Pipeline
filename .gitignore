@@ -1,0 +1,42 @@
+# Trained weights (downloaded separately, too large to track)
+weights/hpl/
+weights/survclam/
+weights/*.tar*
+weights/*.zip
+
+# Pipeline outputs / intermediates
+work/
+pipeline_work/
+outputs/
+results/
+*.h5
+*.h5ad
+*.pt
+*.svs
+*.ndpi
+*.tif
+*.tiff
+*.btf
+*.mrxs
+*.pkl
+
+# Local config overrides
+config/pipeline.local.yaml
+
+# Web app runtime artifacts
+webapp/_run_config.yaml
+webapp/_uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Logs
+logs/
+slurm-*.out
+*.out
+*.err
+
+# OS
+.DS_Store

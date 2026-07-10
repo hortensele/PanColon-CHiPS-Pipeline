@@ -1,0 +1,50 @@
+# ==========================================================================
+# Stage env for steps 1-5: DeepPATH tiling/hdf5 + HPL projection/clustering.
+# TensorFlow-1.x / Inception-v3 era stack. Create with:
+#   conda env create -f envs/env_tiling.yml
+#   conda activate pancolon_tiling
+#
+# Reconstructed from:
+#   PathGAN/DeepPATH/DeepPATH_code/conda3_520_env_deepPath.yml   (DeepPATH)
+#   HPL module `pathganplus/3.6`                                  (HPL / BarlowTwins)
+# The BarlowTwins_3 checkpoint is a TF1 graph, so a GPU build of tensorflow 1.15
+# with CUDA 10 is required for step 3. Pin CUDA to match your driver.
+# ==========================================================================
+name: pancolon_tiling
+channels:
+  - conda-forge
+  - bioconda
+  - anaconda
+  - defaults
+dependencies:
+  - python=3.7
+  - pip
+  # --- Deep learning (HPL encoder + DeepPATH inception, TF1) ---
+  - tensorflow-gpu=1.15    # CPU-only hosts: use tensorflow=1.15 (step 3 will be slow)
+  - cudatoolkit=10.0
+  - cudnn=7.6
+  # --- Whole-slide + image I/O (DeepPATH tiling) ---
+  - openslide
+  - openslide-python
+  - libtiff
+  - pillow
+  - opencv
+  - scikit-image
+  - imageio
+  # --- Array / data ---
+  - numpy=1.18
+  - pandas
+  - scipy
+  - h5py
+  - hdf5
+  # --- HPL Leiden clustering / assignment ---
+  - scanpy
+  - anndata
+  - leidenalg
+  - python-igraph
+  - umap-learn
+  - scikit-learn
+  - joblib
+  - pyyaml            # required by the pipeline driver
+  - pip:
+    - opencv-python-headless

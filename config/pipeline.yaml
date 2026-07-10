@@ -1,0 +1,152 @@
+# ==========================================================================
+# PanColon-CHiPS-Pipeline configuration
+# --------------------------------------------------------------------------
+# This is the single source of truth for every path and parameter the
+# pipeline uses. Copy it, edit the paths for your machine, and pass it with
+#   python pancolon_pipeline.py <step> --config config/pipeline.yaml
+# Anything left as a ${...} placeholder or "CHANGE_ME" must be filled in.
+# ==========================================================================
+
+# ---- Where this checkout lives (auto-detected if left blank) --------------
+repo_root: ""            # blank => directory containing pancolon_pipeline.py
+
+# ---- Run identity ---------------------------------------------------------
+# A short name for the cohort you are scoring. Used to namespace all outputs.
+dataset_name: "my_cohort"
+magnification: "20x"     # the shipped model is 20x; do not change unless retraining
+
+# ---- Inputs / outputs -----------------------------------------------------
+paths:
+  wsi_dir: "/gpfs/scratch/leh06/pancolon_test_work/incoming_wsi"   # step 1 input (.svs/.ndpi/.tif)
+  work_dir: "/gpfs/scratch/leh06/pancolon_test_work"               # all intermediate + final outputs
+  # Optional clinical CSV. Only needed if you want C-index/KM evaluation (labels)
+  # or if you select a covariate-fused CHiPS variant. Leave "" for pure scoring.
+  clinical_csv: ""
+  slide_id_col: "slide_id"
+
+# ---- Conda environments (one per stage; see envs/) ------------------------
+# The driver runs `conda activate <name>` before each stage unless you pass
+# --no-env-switch (meaning: the right env is already active).
+envs:
+  conda_sh: "/gpfs/share/apps/anaconda3/gpu/new/etc/profile.d/conda.sh"  # your conda.sh
+  tiling: "pancolon_tiling"      # DeepPATH + HPL (TensorFlow) stage, steps 1-5
+  survclam: "pancolon_survclam"  # SurvCLAM (PyTorch) stage, steps 6-8
+  # Optional: enter a stage via an environment MODULE instead of a conda env.
+  # If set, `module load <value>` is used and the conda env above is ignored for
+  # that stage. Used here to reuse the cluster's existing HPL/DeepPATH TF stack
+  # instead of building pancolon_tiling. Leave "" to use the conda env.
+  tiling_module: "condaenvs/gpu/pathgan_SSL"
+  survclam_module: ""
+  module_init: ""   # path to modules init (e.g. /etc/profile.d/modules.sh) if `module` isn't found
+
+# ---- Vendored tool roots --------------------------------------------------
+# Default to the bundled vendor/ copies. Point these at your own clones of
+# DeepPATH / HPL / SurvCLAM if you prefer not to use the vendored trees.
+# NOTE: for a run on the lab filesystem these point at the real installs, so the
+# full HPL results tree (reference clustering) and all deps are present. External
+# collaborators use the vendored copies instead: "vendor/deeppath" etc.
+tools:
+  deeppath_root: "/gpfs/data/tsirigoslab/home/leh06/PathGAN/DeepPATH"
+  hpl_root: "/gpfs/data/tsirigoslab/home/leh06/Histomorphological-Phenotype-Learning"
+  survclam_root: "/gpfs/scratch/leh06/CLAMFamily"
+
+# ---- Trained weights (populated by scripts/download_weights.sh) -----------
+weights:
+  root: "weights"
+  # Step 3: HPL BarlowTwins_3 self-supervised encoder (20x, 250K)
+  hpl_checkpoint: "weights/hpl/BarlowTwins_3.ckt"   # .data/.index/.meta share this stem
+  hpl_model_name: "BarlowTwins_3"
+  # Step 4 (artifact removal): the UNFILTERED reference the artifact clustering
+  # (leiden 5.0, meta_field 'cohort') was fit on.
+  hpl_artifact_reference_h5: "weights/hpl/reference/hdf5_colon_reference_he_complete.h5"
+  # Step 5 (HPC assignment): the FILTERED reference the HPC clustering
+  # (leiden 2.5, meta_field 'cohort_cleaned') was fit on.
+  hpl_reference_h5: "weights/hpl/reference/hdf5_colon_reference_he_complete_filtered.h5"
+  hpl_folds_pickle: "weights/hpl/reference/colon_reference_folds.pkl"
+  # Steps 7-8: SurvCLAM CHiPS fold checkpoints (imaging-only DFS model).
+  # eval.py locates checkpoints at:
+  #   {survclam_runs_root}/{infer.runs_root_dataset}/{run_sig}/results/{exp_code}_s{seed}
+  # where run_sig is derived from infer.* (see pancolon/steps._run_sig). The
+  # download bundle preserves that nested layout under survclam_runs_root.
+  survclam_runs_root: "weights/survclam/runs"
+
+# ==========================================================================
+# Step parameters
+# ==========================================================================
+
+# ---- Step 1: tiling (DeepPATH) -------------------------------------------
+tile:
+  tile_size: 224         # pixels per tile edge (HPL h224)
+  overlap: 0
+  background_threshold: 50   # % background above which a tile is dropped
+  workers: 8
+
+# ---- Step 3: HPL projection ----------------------------------------------
+project:
+  rep_key: "img_z_latent"
+  tiles_key: "tiles"
+  z_dim: 128
+  img_size: 224
+  batch_size: 64
+
+# ---- Steps 4-5: two Leiden clusterings ------------------------------------
+# The pipeline mirrors the PanColon workflow's TWO clusterings:
+#   Step 4 = ARTIFACT removal: assign tiles to the coarse 'cohort' clustering
+#            (leiden 5.0), then drop tiles in the artifact clusters at the TILE
+#            level via HPL's remove_indexes_h5.py -> a filtered h5.
+#   Step 5 = HPC assignment: assign the surviving tiles to the fine
+#            'cohort_cleaned' clustering (leiden 2.5) = the phenotype clusters.
+cluster:
+  rep_key: "img_z_latent"        # representation key in the h5 (both clusterings)
+
+  # --- artifact clustering (step 4) ---
+  artifact_meta_field: "cohort"
+  artifact_resolution: 5.0
+  artifact_fold: 1
+  # Cluster IDs (leiden 5.0, fold 1) that are histological artifacts — pen
+  # marks, blur, tissue folds, background. From create_pickle_additional_pancolon_20x.py.
+  artifact_cluster_ids: [26, 34, 46, 47, 53, 62, 64, 77, 88, 92, 93, 95]
+
+  # --- HPC clustering (step 5) ---
+  hpc_meta_field: "cohort_cleaned"
+  hpc_resolution: 2.5
+  hpc_fold: 1
+
+# ---- Steps 6: build .pt feature store (SurvCLAM) --------------------------
+build_pt:
+  model_key: "HPL_PANCOLON_20x"  # subfolder under the .pt feature store
+  meta_field: "slides"           # h5 field carrying the slide id
+  embed_dim: 128
+
+# ---- Step 7: survival inference (SurvCLAM eval, external inference) --------
+infer:
+  runs_root_dataset: "colon_united"   # training dataset_name where ckpts were saved
+  exp_code: "HPL_PANCOLON_20x__dfs__lr2e4_reg1e5_do025_clip1_plateau_p4_big"
+  seed: 1
+  task_type: "survival"
+  time_col: "dfs_event_data"
+  event_col: "dfs_event_ind"
+  covariate_cols: ""             # imaging-only model => empty. "Age,Sex" for fused variant.
+  cov_fusion: "concat"
+  bag_level: "patient"
+  pt_id_col: "slide_id"
+  k: 16                          # number of LOIO folds shipped (s_0 .. s_15)
+  # CHiPS = mean of per-fold risk. Which folds to average ("all" or e.g. "0,1,2").
+  chips_folds: "all"
+
+# ---- Step 8: attention / CHiPS maps --------------------------------------
+attention:
+  which_sets: "test"
+  overlay_dpi: 150
+  # rendered by notebooks/attention_overlay.ipynb using these + the WSIs
+
+# ---- SLURM (only used by scripts/slurm/*) ---------------------------------
+slurm:
+  account: ""
+  gpu_partition: "gpu4_short"
+  cpu_partition: "cpu_short"
+  gpu_gres: "gpu:1"
+  gpu_mem: "100G"
+  cpu_mem: "60G"
+  time_gpu: "12:00:00"
+  time_cpu: "12:00:00"

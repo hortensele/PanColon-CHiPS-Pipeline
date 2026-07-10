@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PanColon-CHiPS · cluster runner</title>
+<script src="/static/vendor/openseadragon/openseadragon.min.js"></script>
+<style>
+  :root {
+    --paper:#fff; --bg:#f7f5fa; --ink:#1e1a26; --muted:#6d6580; --line:#e6e1ee;
+    --eosin:#c02f6b; --hema:#4d40a6; --eosin-soft:#fbe9f1; --hema-soft:#ebe8fa;
+    --good:#1c7f5a; --warn:#b8860b; --bad:#c0392b;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --shadow:0 1px 2px rgba(30,26,38,.05),0 8px 24px rgba(30,26,38,.06);
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --paper:#1f1b2a; --bg:#141019; --ink:#f1edf7; --muted:#a79fb6; --line:#302943;
+    --eosin:#f0619b; --hema:#9d8ff4; --eosin-soft:#38202f; --hema-soft:#241f3e;
+    --good:#3fbf90; --warn:#e0b040; --bad:#f0685a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55}
+  .wrap{max-width:1180px;margin:0 auto;padding:clamp(1.2rem,3vw,2.4rem) clamp(1rem,3vw,1.8rem) 4rem}
+  code,.mono{font-family:var(--mono)}
+  a{color:var(--eosin)}
+
+  header .eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--eosin);margin:0 0 .5rem;display:flex;gap:.55rem;align-items:center}
+  header .eyebrow::before{content:"";width:24px;height:2px;background:var(--eosin)}
+  h1{font-size:clamp(1.7rem,4vw,2.4rem);letter-spacing:-.02em;margin:0 0 .3rem;font-weight:800}
+  .sub{color:var(--muted);margin:0 0 1.6rem;max-width:64ch}
+
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:1.4rem;align-items:start}
+  @media (max-width:840px){.cols{grid-template-columns:1fr}}
+
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:1.3rem 1.4rem;box-shadow:var(--shadow)}
+  .panel h2{font-size:.78rem;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 1rem}
+
+  label{display:block;font-size:.82rem;font-weight:650;margin:0 0 .3rem}
+  .hint{font-size:.76rem;color:var(--muted);margin:.15rem 0 0;font-family:var(--mono)}
+  input[type=text],input[type=file]{width:100%;font-family:var(--mono);font-size:.85rem;padding:.55rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+  input[type=text]:focus,input[type=file]:focus{outline:2px solid var(--eosin);outline-offset:1px}
+  .field{margin-bottom:1rem}
+  .seg{display:flex;gap:.4rem;margin-bottom:.6rem}
+  .seg button{flex:1;font-family:var(--mono);font-size:.75rem;padding:.45rem;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:8px;cursor:pointer}
+  .seg button.on{background:var(--hema-soft);color:var(--hema);border-color:var(--hema)}
+  .row{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap}
+  .check{display:flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:500;color:var(--muted)}
+
+  .btn{font-family:var(--sans);font-weight:700;font-size:.9rem;padding:.6rem 1.2rem;border-radius:9px;border:0;cursor:pointer}
+  .btn-go{background:var(--eosin);color:#fff}
+  .btn-go:disabled{opacity:.5;cursor:not-allowed}
+  .btn-stop{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+  .actions{display:flex;gap:.7rem;align-items:center;margin-top:.4rem}
+  .run-state{font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-left:auto}
+
+  /* step tracker */
+  .spine{position:relative;padding-left:2.7rem;margin:.2rem 0 0}
+  .spine::before{content:"";position:absolute;left:12px;top:10px;bottom:10px;width:2px;background:linear-gradient(var(--hema) 0 58%,var(--eosin) 64% 100%);opacity:.45}
+  .st{position:relative;margin-bottom:.5rem}
+  .st .dot{position:absolute;left:-2.7rem;top:1px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:.72rem;font-weight:700;background:var(--paper);border:2px solid var(--c);color:var(--c)}
+  .st.s1{--c:var(--hema)} .st.s2{--c:var(--eosin)}
+  .st .body{display:flex;align-items:center;gap:.6rem;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:.5rem .75rem}
+  .st .nm{font-family:var(--mono);font-weight:700;font-size:.85rem}
+  .st .gpu{font-family:var(--mono);font-size:.6rem;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 .3rem}
+  .st .badge{margin-left:auto;font-family:var(--mono);font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;padding:.12rem .5rem;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
+  .st[data-status=running] .body{border-color:var(--c)}
+  .st[data-status=running] .badge{color:var(--warn);border-color:var(--warn)}
+  .st[data-status=running] .dot{background:var(--c);color:#fff;animation:pulse 1.1s ease-in-out infinite}
+  .st[data-status=pending] .badge{color:var(--muted)}
+  .st[data-status=done] .badge{color:var(--good);border-color:var(--good)}
+  .st[data-status=done] .dot{background:var(--c);color:#fff}
+  .st[data-status=failed] .badge{color:var(--bad);border-color:var(--bad)}
+  .st[data-status=failed] .dot{background:var(--bad);border-color:var(--bad);color:#fff}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--c)}50%{box-shadow:0 0 0 5px transparent}}
+  @media (prefers-reduced-motion:reduce){.st .dot{animation:none}}
+
+  .console{margin-top:1.1rem;background:#0e0b16;color:#d8d2e6;border-radius:10px;padding:.8rem .9rem;font-family:var(--mono);font-size:.74rem;line-height:1.6;height:230px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .console .cmd{color:var(--eosin)} .console .step{color:var(--hema);font-weight:700} .console .err{color:#f0685a}
+
+  .banner{display:flex;gap:.6rem;background:var(--hema-soft);border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;font-size:.82rem;margin-bottom:1.4rem}
+  .banner b{color:var(--hema)}
+  .empty{color:var(--muted);font-size:.85rem;font-style:italic}
+
+  /* results */
+  .results{margin-top:1.6rem}
+  .kpi{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem}
+  .kpi .c{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.8rem 1.1rem;box-shadow:var(--shadow)}
+  .kpi .n{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .kpi .l{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+  .explore{display:grid;grid-template-columns:230px minmax(0,1fr);gap:1.2rem;align-items:start}
+  @media (max-width:840px){.explore{grid-template-columns:1fr}}
+  .slidelist{display:flex;flex-direction:column;gap:.35rem;max-height:560px;overflow:auto}
+  .slidelist button{text-align:left;font-family:var(--mono);font-size:.78rem;padding:.5rem .6rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;gap:.5rem}
+  .slidelist button.on{border-color:var(--eosin);background:var(--eosin-soft)}
+  .slidelist .sc{color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .detail .head{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem}
+  .detail .sid{font-family:var(--mono);font-weight:700;font-size:1rem}
+  .chip-readout{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+  .chip-readout .c{border:1px solid var(--line);border-radius:10px;padding:.5rem .8rem}
+  .chip-readout .n{font-size:1.2rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .chip-readout .l{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .pill{display:inline-block;font-family:var(--mono);font-size:.66rem;padding:.1rem .45rem;border-radius:20px;text-transform:uppercase;letter-spacing:.06em}
+  .pill.high{background:var(--eosin-soft);color:var(--eosin)} .pill.low{background:var(--hema-soft);color:var(--hema)}
+  .pill.intermediate{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+
+  .viz{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:1.1rem;align-items:start}
+  @media (max-width:720px){.viz{grid-template-columns:1fr}}
+  #osd{width:100%;height:440px;background:#0e0b16;border:1px solid var(--line);border-radius:10px}
+  .osd-empty{display:grid;place-items:center;height:100%;color:var(--muted);font-size:.82rem;padding:1rem;text-align:center}
+  .osd-overlay-img{width:100%;height:100%;image-rendering:auto;pointer-events:none}
+  .osd-controls{display:flex;align-items:center;gap:.7rem;margin-top:.6rem;flex-wrap:wrap}
+  .osd-controls .seg{margin:0}
+  .osd-controls input[type=range]{accent-color:var(--eosin)}
+  .subh{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 .5rem}
+
+  /* hpc bars */
+  .hpc-total{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-bottom:.5rem}
+  .hpc-row{display:grid;grid-template-columns:64px 1fr 44px;align-items:center;gap:.5rem;margin-bottom:.28rem}
+  .hpc-label{font-family:var(--mono);font-size:.72rem;color:var(--ink)}
+  .hpc-track{background:var(--bg);border:1px solid var(--line);border-radius:5px;height:14px;overflow:hidden}
+  .hpc-fill{height:100%;border-radius:4px 5px 5px 4px}
+  .hpc-val{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th,td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin-top:1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Cluster runner · submits to SLURM</p>
+    <h1>Run slides through CHiPS</h1>
+    <p class="sub">Point at (or upload) one or more whole-slide images, submit the eight-step pipeline to the cluster, watch each step run, then explore per image: the CHiPS score, the HPC phenotype distribution, and a zoomable attention map.</p>
+  </header>
+
+  <div class="banner">
+    <span>🔬</span>
+    <div>This submits <code>stage.sbatch</code> jobs with <code>sbatch</code>, so it must run on a <b>login node</b> in the <code>pancolon_survclam</code> env with the weights in place. Use <b>Dry run</b> to preview the exact <code>sbatch</code> commands without submitting.</div>
+  </div>
+
+  <div class="cols">
+    <!-- inputs -->
+    <div class="panel">
+      <h2>Input slides</h2>
+      <div class="seg" id="srcSeg">
+        <button type="button" data-src="folder" class="on">Folder on the cluster</button>
+        <button type="button" data-src="upload">Upload files</button>
+      </div>
+
+      <div class="field" id="folderField">
+        <label for="wsiDir">WSI folder</label>
+        <input type="text" id="wsiDir" value="{{ base_wsi_dir }}" placeholder="/path/to/slides">
+        <p class="hint">Every .svs / .ndpi / .tif in this folder is tiled.</p>
+      </div>
+
+      <div class="field" id="uploadField" style="display:none">
+        <label for="wsiFile">Whole-slide images (one or more)</label>
+        <input type="file" id="wsiFile" accept=".svs,.ndpi,.tif,.tiff,.mrxs,.scn" multiple>
+        <p class="hint" id="uploadHint">Large files stream to the work folder; this can take a while.</p>
+      </div>
+
+      <div class="field">
+        <label for="dataset">Cohort name</label>
+        <input type="text" id="dataset" value="{{ dataset_name }}">
+      </div>
+      <div class="field">
+        <label for="workDir">Work / output folder</label>
+        <input type="text" id="workDir" value="{{ base_work_dir }}" placeholder="/path/to/pipeline_work">
+      </div>
+      <div class="field row">
+        <div class="check"><input type="checkbox" id="dryRun"> <label for="dryRun" style="margin:0">Dry run (preview sbatch commands only)</label></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-go" id="runBtn">Submit to cluster</button>
+        <button class="btn btn-stop" id="stopBtn" style="display:none">Cancel jobs</button>
+        <span class="run-state" id="runState">idle</span>
+      </div>
+    </div>
+
+    <!-- progress -->
+    <div class="panel">
+      <h2>Progress</h2>
+      <div class="spine" id="tracker">
+        {% for s in steps %}
+        <div class="st {{ 's1' if loop.index0 < 5 else 's2' }}" data-step="{{ s }}" data-status="idle">
+          <div class="dot">{{ loop.index }}</div>
+          <div class="body">
+            <span class="nm">{{ s }}</span>
+            {% if s in ['project','infer_survival','attention_map'] %}<span class="gpu">gpu</span>{% endif %}
+            <span class="badge">idle</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="console" id="console" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- results -->
+  <div class="results" id="results" style="display:none">
+    <div class="panel">
+      <h2>Cohort · CHiPS</h2>
+      <div class="kpi" id="kpi"></div>
+      <div class="tbl-wrap"><table id="chipsTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="panel" style="margin-top:1.2rem">
+      <h2>Per-image explorer</h2>
+      <div class="explore">
+        <div class="slidelist" id="slideList"></div>
+        <div class="detail" id="detail">
+          <p class="empty">Pick a slide on the left to see its CHiPS score, HPC composition, and attention map.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/viewer.js"></script>
+<script>
+const STEPS = {{ steps|tojson }};
+let poll = null;
+const logOffsets = {}, logStarted = {}, logDrained = {};
+
+// -- source toggle --------------------------------------------------------
+const seg = document.getElementById('srcSeg');
+let source = 'folder';
+seg.querySelectorAll('button').forEach(b => b.onclick = () => {
+  seg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  source = b.dataset.src;
+  document.getElementById('folderField').style.display = source === 'folder' ? '' : 'none';
+  document.getElementById('uploadField').style.display = source === 'upload' ? '' : 'none';
+});
+
+// -- console + tracker ----------------------------------------------------
+const consoleEl = document.getElementById('console');
+function logLine(line, cls){
+  const div = document.createElement('div');
+  if (cls) div.className = cls;
+  else if (line.startsWith('$ ')) div.className = 'cmd';
+  else if (/FAILED|Error|Traceback|error:/.test(line)) div.className = 'err';
+  div.textContent = line;
+  consoleEl.appendChild(div);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+function setStep(name, status){
+  const el = document.querySelector(`.st[data-step="${name}"]`);
+  if (!el) return;
+  el.dataset.status = status;
+  el.querySelector('.badge').textContent = status;
+}
+function setRunState(state){
+  document.getElementById('runState').textContent = state;
+  const running = state === 'running';
+  document.getElementById('runBtn').disabled = running;
+  document.getElementById('stopBtn').style.display = running ? '' : 'none';
+}
+
+// -- polling status + logs ------------------------------------------------
+async function pullLog(step){
+  const off = logOffsets[step] || 0;
+  const r = await fetch(`/logs/${step}?offset=${off}`);
+  const j = await r.json();
+  if (!j.exists) return false;
+  if (j.content){
+    if (!logStarted[step]){ logLine(`== ${step} ==`, 'step'); logStarted[step] = true; }
+    j.content.split('\n').forEach(l => { if (l.length) logLine(l); });
+  }
+  logOffsets[step] = j.offset;
+  return true;
+}
+async function tick(){
+  const r = await fetch('/status');
+  const j = await r.json();
+  Object.entries(j.steps || {}).forEach(([n, s]) => setStep(n, s));
+  setRunState(j.state);
+  // stream logs for running steps and drain finished ones once
+  for (const job of (j.jobs || [])){
+    if (job.state === 'running') await pullLog(job.step);
+    else if (job.state === 'done' && !logDrained[job.step]){ await pullLog(job.step); logDrained[job.step] = true; }
+    else if (job.state === 'failed' && !logDrained[job.step]){ await pullLog(job.step); logDrained[job.step] = true; }
+  }
+  if (['done','failed','stopped','idle'].includes(j.state)){
+    clearInterval(poll); poll = null;
+    if (j.state === 'done') loadResults();
+  }
+}
+function startPolling(){ if (poll) clearInterval(poll); tick(); poll = setInterval(tick, 3000); }
+
+// -- run ------------------------------------------------------------------
+async function resolveWsiDir(){
+  if (source === 'folder') return document.getElementById('wsiDir').value.trim();
+  const fileInput = document.getElementById('wsiFile');
+  if (!fileInput.files.length) throw new Error('Choose file(s) to upload first.');
+  const fd = new FormData();
+  for (const f of fileInput.files) fd.append('wsi', f);
+  fd.append('work_dir', document.getElementById('workDir').value.trim());
+  document.getElementById('uploadHint').textContent = 'Uploading…';
+  const r = await fetch('/upload', {method:'POST', body:fd});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'Upload failed.');
+  document.getElementById('uploadHint').textContent = `Uploaded ${j.n} file(s) → ${j.dir}`;
+  return j.dir;
+}
+
+document.getElementById('runBtn').onclick = async () => {
+  try {
+    STEPS.forEach(s => { setStep(s, 'idle'); logOffsets[s]=0; logStarted[s]=false; logDrained[s]=false; });
+    consoleEl.innerHTML = '';
+    document.getElementById('results').style.display = 'none';
+    const wsiDir = await resolveWsiDir();
+    const payload = {
+      wsi_dir: wsiDir,
+      work_dir: document.getElementById('workDir').value.trim(),
+      dataset_name: document.getElementById('dataset').value.trim(),
+      dry_run: document.getElementById('dryRun').checked,
+    };
+    const r = await fetch('/submit', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Could not submit.');
+    if (j.dry_run){
+      logLine('DRY RUN — resolved sbatch chain (nothing submitted):', 'step');
+      (j.jobs||[]).forEach(x => logLine(`  ${x.step}`));
+      logLine('Uncheck “Dry run” and submit to launch on the cluster.');
+      setRunState('idle');
+      return;
+    }
+    (j.jobs||[]).forEach(x => logLine(`submitted ${x.step} → job ${x.job_id}`, 'step'));
+    startPolling();
+  } catch (err){ logLine('Error: ' + err.message, 'err'); }
+};
+document.getElementById('stopBtn').onclick = () => fetch('/stop', {method:'POST'});
+
+// -- results: cohort table + slide gallery --------------------------------
+let CHIPS_ROWS = [], CHIPS_IDCOL = 'slide_id';
+async function loadResults(){
+  const cr = await (await fetch('/chips')).json();
+  CHIPS_ROWS = cr.rows || []; CHIPS_IDCOL = cr.id_col || 'slide_id';
+  renderCohort();
+  const sr = await (await fetch('/slides')).json();
+  renderSlideList(sr.slides || []);
+  document.getElementById('results').style.display = '';
+}
+function renderCohort(){
+  const kpi = document.getElementById('kpi');
+  const table = document.getElementById('chipsTable');
+  const scores = CHIPS_ROWS.map(r => parseFloat(r.chips_score)).filter(x => !isNaN(x));
+  const mean = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 0;
+  kpi.innerHTML = `
+    <div class="c"><div class="n">${CHIPS_ROWS.length}</div><div class="l">Cases scored</div></div>
+    <div class="c"><div class="n">${scores.length ? mean.toFixed(3) : '—'}</div><div class="l">Mean CHiPS</div></div>`;
+  const cols = ['case_id','slide_id','chips_score','chips_percentile','chips_tertile','n_folds']
+               .filter(c => CHIPS_ROWS.length && c in CHIPS_ROWS[0]);
+  table.querySelector('thead').innerHTML = '<tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr>';
+  table.querySelector('tbody').innerHTML = CHIPS_ROWS.map(r => '<tr>' + cols.map(c => {
+    let v = r[c] ?? '';
+    if (c === 'chips_score' || c === 'chips_percentile') v = v===''?'':parseFloat(v).toFixed(c==='chips_score'?3:1);
+    if (c === 'chips_tertile' && v) v = `<span class="pill ${v}">${v}</span>`;
+    return `<td>${v}</td>`;
+  }).join('') + '</tr>').join('');
+}
+function renderSlideList(slides){
+  const list = document.getElementById('slideList');
+  if (!slides.length){ list.innerHTML = '<p class="empty">No per-slide outputs found.</p>'; return; }
+  list.innerHTML = '';
+  slides.forEach((s, i) => {
+    const b = document.createElement('button');
+    const sc = s.chips_score != null ? parseFloat(s.chips_score).toFixed(3) : '—';
+    b.innerHTML = `<span>${s.slide_id}</span><span class="sc">${sc}</span>`;
+    b.onclick = () => { list.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); showSlide(s); };
+    list.appendChild(b);
+    if (i === 0){ b.classList.add('on'); showSlide(s); }
+  });
+}
+async function showSlide(s){
+  const d = document.getElementById('detail');
+  const tert = s.chips_tertile ? `<span class="pill ${s.chips_tertile}">${s.chips_tertile}</span>` : '';
+  d.innerHTML = `
+    <div class="head"><span class="sid">${s.slide_id}</span>${tert}</div>
+    <div class="chip-readout">
+      <div class="c"><div class="n">${s.chips_score!=null?parseFloat(s.chips_score).toFixed(3):'—'}</div><div class="l">CHiPS score</div></div>
+      <div class="c"><div class="n">${s.chips_percentile!=null?parseFloat(s.chips_percentile).toFixed(0):'—'}</div><div class="l">Cohort percentile</div></div>
+    </div>
+    <div class="viz">
+      <div>
+        <p class="subh">Attention map</p>
+        <div id="osd"></div>
+        <div class="osd-controls">
+          <div class="seg" id="ovSeg">
+            <button type="button" data-kind="attention" class="on">Attention</button>
+            <button type="button" data-kind="hpc">HPC</button>
+          </div>
+          <label style="margin:0;font-weight:500;color:var(--muted)">Opacity</label>
+          <input type="range" id="ovOpacity" min="0" max="1" step="0.05" value="0.6">
+        </div>
+      </div>
+      <div>
+        <p class="subh">HPC composition</p>
+        <div id="hpcChart"></div>
+      </div>
+    </div>`;
+  PanColonViewer.open(s.slide_id, s.has_wsi);
+  const ovSeg = document.getElementById('ovSeg');
+  ovSeg.querySelectorAll('button').forEach(b => b.onclick = () => {
+    ovSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); PanColonViewer.setOverlay(b.dataset.kind);
+  });
+  document.getElementById('ovOpacity').oninput = (e) => PanColonViewer.setOpacity(parseFloat(e.target.value));
+  const comp = await (await fetch(`/hpc/${encodeURIComponent(s.slide_id)}`)).json();
+  renderHpcChart(document.getElementById('hpcChart'), comp.composition);
+}
+
+// reconnect to an in-flight run if the page is reloaded
+(async () => { const j = await (await fetch('/status')).json();
+  if (j.state === 'running'){ startPolling(); }
+  else if (j.state === 'done'){ loadResults(); } })();
+</script>
+</body>
+</html>

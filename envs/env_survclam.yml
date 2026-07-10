@@ -1,0 +1,44 @@
+# ==========================================================================
+# Stage env for steps 6-8: SurvCLAM .pt build, survival inference, attention.
+# PyTorch stack. Create with:
+#   conda env create -f envs/env_survclam.yml
+#   conda activate pancolon_survclam
+#
+# Reconstructed from the `clam_latest` environment
+# (/gpfs/scratch/leh06/07_CLAM/code/CLAM/clam_latest.sh, python 3.10 + torch).
+# ==========================================================================
+name: pancolon_survclam
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  # --- Deep learning ---
+  - pytorch>=2.0
+  - torchvision
+  - pytorch-cuda=12.1     # CPU-only hosts: replace with `cpuonly`
+  # --- Array / data ---
+  - numpy
+  - pandas>=2.0
+  - scipy
+  - h5py
+  - scikit-learn
+  # --- Survival metrics (C-index, KM) ---
+  - lifelines
+  - scikit-survival
+  # --- Image I/O for attention overlays (step 8) ---
+  - openslide
+  - openslide-python
+  - pillow
+  - tifffile
+  - matplotlib
+  - seaborn
+  - pyyaml            # required by the pipeline driver
+  - flask             # local web interface (webapp/)
+  # --- Notebook to render overlays ---
+  - jupyterlab
+  - pip:
+    - adjustText>=0.8

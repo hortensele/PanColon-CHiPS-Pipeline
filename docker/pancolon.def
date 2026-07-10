@@ -1,0 +1,45 @@
+# ==========================================================================
+# Singularity / Apptainer definition — the "no Docker" build path.
+#
+# Build a portable .sif WITHOUT root using --fakeroot (works on HPC login/
+# build nodes where Docker is forbidden):
+#
+#   apptainer build --fakeroot pancolon.sif docker/pancolon.def
+#   # or:  singularity build --fakeroot pancolon.sif docker/pancolon.def
+#
+# Run it (GPU optional via --nv):
+#
+#   apptainer run --nv \
+#     -B /path/to/slides:/data -B /path/to/weights:/weights -B /path/to/out:/out \
+#     pancolon.sif
+#
+# Already have the Docker image? You can skip this file and convert it instead:
+#   apptainer build pancolon.sif docker-daemon://pancolon-chips:latest
+# ==========================================================================
+Bootstrap: docker
+From: nvidia/cuda:12.1.1-base-ubuntu22.04
+
+%files
+    . /opt/pancolon
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends \
+        wget bzip2 ca-certificates git procps openslide-tools libopenslide0
+    rm -rf /var/lib/apt/lists/*
+
+    wget -qO /tmp/miniconda.sh \
+        https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash /tmp/miniconda.sh -b -p /opt/conda && rm /tmp/miniconda.sh
+    export PATH=/opt/conda/bin:$PATH
+    conda install -n base -y conda-libmamba-solver
+    conda config --set solver libmamba
+    conda env create -f /opt/pancolon/envs/env_survclam.yml && conda clean -afy
+    conda env create -f /opt/pancolon/envs/env_tiling.yml   && conda clean -afy
+
+%environment
+    export PANCOLON_CONFIG=/opt/pancolon/config/pipeline.container.yaml
+    export PATH=/opt/conda/bin:$PATH
+
+%runscript
+    exec /opt/pancolon/docker/entrypoint.sh "$@"
