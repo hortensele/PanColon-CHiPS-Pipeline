@@ -32,7 +32,12 @@ import glob
 import os
 import numpy as np
 import cv2
-from mpi4py import MPI
+try:
+    from mpi4py import MPI
+    _HAS_MPI = True
+except ImportError:
+    MPI = None
+    _HAS_MPI = False
 from itertools import chain
 import argparse
 import random
@@ -106,9 +111,18 @@ print(subsetout)
 WIDTH = args.wSize
 HEIGHT = args.wSize
 
-size = MPI.COMM_WORLD.Get_size()
-rank = MPI.COMM_WORLD.Get_rank()
-name = MPI.Get_processor_name()
+if _HAS_MPI:
+    size = MPI.COMM_WORLD.Get_size()
+    rank = MPI.COMM_WORLD.Get_rank()
+    name = MPI.Get_processor_name()
+else:
+    size, rank, name = 1, 0, "localhost"
+# This script partitions the image list across `chunks` MPI ranks (rank i writes
+# slice i). When it is launched as a single process (serial, or MPI with one
+# rank), that single rank must own the WHOLE list — otherwise only the first
+# 1/chunks of the tiles get written and the HDF5 is silently incomplete.
+if size <= 1:
+    chunks = 1
 
 # get length of all images to add to hdf5
 Images = []
@@ -192,7 +206,10 @@ print("aaa3 - " + str(len(ImageList)))
 
 patterns1.append('unknown')
 # create hdf5 dataset
-f = h5py.File(args.output, 'w', driver='mpio', comm=MPI.COMM_WORLD)
+if _HAS_MPI:
+    f = h5py.File(args.output, 'w', driver='mpio', comm=MPI.COMM_WORLD)
+else:
+    f = h5py.File(args.output, 'w')
 dset = f.create_dataset(subsetout+'_img', (len(ImageList), WIDTH, HEIGHT, 3), dtype='uint8')
 dset2 = f.create_dataset(subsetout+'_patterns', (len(ImageList), ),
                          dtype = 'S37')
