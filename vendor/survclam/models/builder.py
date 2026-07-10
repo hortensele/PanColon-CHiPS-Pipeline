@@ -1,6 +1,10 @@
 import os
 from functools import partial
-import timm
+try:
+    import timm
+except ImportError:
+    timm = None  # tile-encoder machinery (timm/CONCH/UNI) is unused when the
+                 # pipeline feeds precomputed HPL features into the survival model.
 from .timm_wrapper import TimmCNNEncoder
 import torch
 from utils.constants import MODEL2CONSTANTS

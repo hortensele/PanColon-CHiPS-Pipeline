@@ -344,6 +344,10 @@ def step_build_pt(cfg, opts):
         "--slide_id_col", cfg.get("paths", {}).get("slide_id_col", "slide_id"),
         "--features_root", _pt_features_root(cfg),
         "--model", b.get("model_key", "HPL_PANCOLON_20x"),
+        # feature_key drives the output dir <features_root>/<ds>/<feature_key>/;
+        # pin it to model_key so it matches the feature_dir infer_survival reads
+        # (otherwise save_embeddings appends _<mag> -> HPL_PANCOLON_20x_20x).
+        "--feature_key", b.get("model_key", "HPL_PANCOLON_20x"),
         "--mag", cfg.get("magnification", "20x"),
         "--h5", _filtered_h5(cfg),   # artifact-removed embeddings
         "--meta_field", b.get("meta_field", "slides"),

@@ -1,5 +1,9 @@
 import torch
-import timm
+try:
+    import timm
+except ImportError:
+    timm = None  # only needed if a timm tile-encoder is instantiated; HPL-feature
+                 # inference feeds precomputed embeddings and never uses one.
 
 class TimmCNNEncoder(torch.nn.Module):
     def __init__(self, model_name: str = 'resnet50.tv_in1k', 
