@@ -5,7 +5,10 @@ import copy
 import csv
 
 # Data science packages.
-import seaborn as sns
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None  # only used for plotting, not for tile assignment
 import pandas as pd
 import numpy as np
 

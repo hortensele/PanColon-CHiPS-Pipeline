@@ -1,9 +1,21 @@
 # Imports
-from skbio.stats.composition import clr, ilr, alr, multiplicative_replacement
+try:
+    from skbio.stats.composition import clr, ilr, alr, multiplicative_replacement
+except ImportError:
+    # skbio is only used by slide/sample-level compositional aggregation
+    # (cluster_ratios_slide / sample_representation), not tile-level Leiden
+    # assignment, so it's optional for the inference pipeline.
+    clr = ilr = alr = multiplicative_replacement = None
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.preprocessing import OneHotEncoder
-import matplotlib.pyplot as plt
-import seaborn as sns
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None
 import pandas as pd
 import numpy as np
 import anndata
