@@ -147,7 +147,16 @@ def safe_concordance_index(event_times, predicted_scores, event_observed, *, deb
     if len(t2) < 2:
         return float("nan")
 
-    return float(concordance_index(t2, s2, e2))
+    try:
+        return float(concordance_index(t2, s2, e2))
+    except ZeroDivisionError:
+        # No admissible pairs (e.g. every event censored, as with dummy
+        # time/event placeholders for external inference with no real
+        # clinical labels) — there's no concordance metric to report, but
+        # this must not crash a run whose actual goal is the risk score.
+        print(f"[CINDEX WARNING]{' ' + debug_tag if debug_tag else ''} "
+              "No admissible pairs (all censored or tied) — returning nan.")
+        return float("nan")
 
 
 def _parse_survival_target(survival, device=None, *, debug_tag=""):
