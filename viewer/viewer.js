@@ -17,6 +17,8 @@
   let MANIFEST = null;
   let viewers = [];
   let syncing = false;
+  let ATLAS = {};            // hpc id (int) -> {hpc,id,name,description,color}
+  let currentHpcGrid = null; // {ncols,nrows,x0,y0,cells} for the slide on screen
 
   document.addEventListener("DOMContentLoaded", init);
 
@@ -35,7 +37,40 @@
     buildSlideList();
     renderCohort();
     wireTabs();
+    if (MANIFEST.hpc_atlas) loadAtlas(MANIFEST.hpc_atlas);
     if ((MANIFEST.slides || []).length) showSlide(MANIFEST.slides[0].slide_id);
+  }
+
+  // -- HPC atlas --------------------------------------------------------------
+  async function loadAtlas(path) {
+    let atlas;
+    try {
+      atlas = await (await fetch(path)).json();
+    } catch (e) {
+      return; // atlas is optional — viewer still works with bare HPC ids
+    }
+    ATLAS = {};
+    atlas.forEach((a) => { ATLAS[a.hpc] = a; });
+    renderAtlasPanel(atlas);
+  }
+
+  function renderAtlasPanel(atlas) {
+    const el = document.getElementById("atlasList");
+    if (!el) return;
+    if (!atlas.length) { el.innerHTML = '<p class="empty">No HPC atlas provided.</p>'; return; }
+    el.innerHTML = atlas.map((a) => `
+      <div class="atlas-row">
+        <span class="atlas-swatch" style="background:${a.color || "var(--muted)"}"></span>
+        <div class="atlas-body">
+          <div class="atlas-name"><b>HPC ${a.hpc}</b> — ${escapeHtml(a.name || "")}</div>
+          <div class="atlas-desc">${escapeHtml(a.description || "")}</div>
+        </div>
+      </div>`).join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
   // -- tabs -----------------------------------------------------------------
@@ -49,6 +84,8 @@
           which === "cohort" ? "" : "none";
         document.getElementById("slideView").style.display =
           which === "slide" ? "" : "none";
+        const atlasView = document.getElementById("atlasView");
+        if (atlasView) atlasView.style.display = which === "atlas" ? "" : "none";
       };
     });
   }
@@ -64,7 +101,10 @@
     (MANIFEST.slides || []).forEach((s) => {
       const b = document.createElement("button");
       const sc = s.chips_score != null ? Number(s.chips_score).toFixed(3) : "—";
-      b.innerHTML = `<span>${s.slide_id}</span><span class="sc">${sc}</span>`;
+      const tert = s.chips_tertile
+        ? `<span class="pill ${s.chips_tertile}">${s.chips_tertile}</span>` : "";
+      b.innerHTML =
+        `<span>${s.slide_id}</span><span class="sc">${sc}${tert}</span>`;
       b.dataset.slide = s.slide_id;
       b.onclick = () => { showSlide(s.slide_id); goTab("slide"); };
       list.appendChild(b);
@@ -76,11 +116,14 @@
     const slides = MANIFEST.slides || [];
     const scores = slides.map((s) => Number(s.chips_score)).filter((x) => !isNaN(x));
     const mean = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-    const med = median(scores);
+    const tertCounts = { low: 0, intermediate: 0, high: 0 };
+    slides.forEach((s) => { if (s.chips_tertile in tertCounts) tertCounts[s.chips_tertile]++; });
     document.getElementById("kpi").innerHTML = `
       <div class="c"><div class="n">${slides.length}</div><div class="l">Slides</div></div>
       <div class="c"><div class="n">${scores.length ? mean.toFixed(3) : "—"}</div><div class="l">Mean CHiPS</div></div>
-      <div class="c"><div class="n">${scores.length ? med.toFixed(3) : "—"}</div><div class="l">Median CHiPS</div></div>`;
+      <div class="c"><div class="n">${tertCounts.low}</div><div class="l">Low</div></div>
+      <div class="c"><div class="n">${tertCounts.intermediate}</div><div class="l">Intermediate</div></div>
+      <div class="c"><div class="n">${tertCounts.high}</div><div class="l">High</div></div>`;
     renderDistribution(slides);
     renderTable(slides);
   }
@@ -117,7 +160,7 @@
   }
 
   function renderTable(slides) {
-    const cols = ["slide_id", "chips_score", "chips_percentile", "chips_tertile"];
+    const cols = ["slide_id", "chips_score", "chips_tertile"];
     const thead = document.querySelector("#chipsTable thead");
     const tbody = document.querySelector("#chipsTable tbody");
     thead.innerHTML = "<tr>" + cols.map((c) => `<th data-c="${c}">${c}</th>`).join("") + "</tr>";
@@ -132,7 +175,6 @@
       tbody.innerHTML = rows.map((r) => "<tr data-slide='" + r.slide_id + "'>" + cols.map((c) => {
         let v = r[c]; if (v == null) v = "";
         if (c === "chips_score") v = v === "" ? "" : Number(v).toFixed(3);
-        if (c === "chips_percentile") v = v === "" ? "" : Number(v).toFixed(0);
         if (c === "chips_tertile" && v) v = `<span class="pill ${v}">${v}</span>`;
         return `<td>${v}</td>`;
       }).join("") + "</tr>").join("");
@@ -159,8 +201,13 @@
     document.getElementById("slideHead").innerHTML =
       `<span class="sid">${sid}</span>${tert}`;
     document.getElementById("chipReadout").innerHTML = `
-      <div class="c"><div class="n">${s.chips_score != null ? Number(s.chips_score).toFixed(3) : "—"}</div><div class="l">CHiPS score</div></div>
-      <div class="c"><div class="n">${s.chips_percentile != null ? Number(s.chips_percentile).toFixed(0) : "—"}</div><div class="l">Cohort percentile</div></div>`;
+      <div class="c"><div class="n">${s.chips_score != null ? Number(s.chips_score).toFixed(3) : "—"}</div><div class="l">CHiPS score</div></div>`;
+
+    currentHpcGrid = null;
+    if (s.hpc_grid) {
+      fetch(`slides/${encodeURIComponent(sid)}/${s.hpc_grid}`)
+        .then((r) => r.json()).then((g) => { currentHpcGrid = g; }).catch(() => {});
+    }
 
     destroyViewers();
     const grid = document.getElementById("panels");
@@ -201,7 +248,39 @@
       gestureSettingsMouse: { clickToZoom: false },
     });
     v._layerKey = layer.key;
+    if (layer.key === "hpc") wireHpcTooltip(v, host, s);
     return v;
+  }
+
+  // Hovering the HPC panel looks up the tile under the cursor via
+  // hpc_grid.json and shows "HPC N — <name>" in a floating tooltip. All three
+  // layers share the same normalized [0,1]x[0,aspect] extent (see file header),
+  // so pointFromPixel gives (u, v*aspect) directly — no need to know the
+  // hpc.png's actual pixel dimensions.
+  function wireHpcTooltip(v, host, s) {
+    const tip = document.getElementById("hpcTooltip");
+    if (!tip) return;
+    host.addEventListener("mousemove", (e) => {
+      if (!currentHpcGrid) { tip.style.display = "none"; return; }
+      const rect = host.getBoundingClientRect();
+      const px = new OpenSeadragon.Point(e.clientX - rect.left, e.clientY - rect.top);
+      const vp = v.viewport.pointFromPixel(px);
+      const aspect = s.aspect || 1;
+      const u = vp.x, w = vp.y / aspect;
+      if (u < 0 || u > 1 || w < 0 || w > 1) { tip.style.display = "none"; return; }
+      const col = Math.floor(u * currentHpcGrid.ncols);
+      const row = Math.floor(w * currentHpcGrid.nrows);
+      const hpc = currentHpcGrid.cells[`${col},${row}`];
+      if (hpc == null) { tip.style.display = "none"; return; }
+      const a = ATLAS[hpc];
+      tip.innerHTML = a && a.name
+        ? `<b>HPC ${hpc}</b> — ${escapeHtml(a.name)}`
+        : `<b>HPC ${hpc}</b>`;
+      tip.style.left = (e.clientX + 14) + "px";
+      tip.style.top = (e.clientY + 14) + "px";
+      tip.style.display = "block";
+    });
+    host.addEventListener("mouseleave", () => { tip.style.display = "none"; });
   }
 
   // Propagate viewport center+zoom from whichever viewer the user drives to the
@@ -232,12 +311,6 @@
   }
 
   // -- helpers --------------------------------------------------------------
-  function median(a) {
-    if (!a.length) return 0;
-    const s = a.slice().sort((x, y) => x - y);
-    const m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  }
 
   // HPC composition -> labelled horizontal bars, colours matching the map overlay.
   function renderHpcChart(container, composition, topN = 12) {
@@ -263,7 +336,9 @@
     shown.forEach((r) => {
       const row = document.createElement("div");
       row.className = "hpc-row";
-      row.title = `HPC ${r.hpc}: ${r.n_tiles.toLocaleString()} tiles (${(r.frac * 100).toFixed(1)}%)`;
+      const a = ATLAS[r.hpc];
+      const name = a && a.name ? ` — ${a.name}` : "";
+      row.title = `HPC ${r.hpc}${name}: ${r.n_tiles.toLocaleString()} tiles (${(r.frac * 100).toFixed(1)}%)`;
       const label = document.createElement("span");
       label.className = "hpc-label";
       label.textContent = r.hpc === "other" ? "other" : `HPC ${r.hpc}`;

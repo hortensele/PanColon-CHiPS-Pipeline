@@ -81,6 +81,17 @@
   .hpc-val{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
   .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.2rem}
   @media (max-width:860px){.two{grid-template-columns:1fr}}
+
+  .hpc-tooltip{position:fixed;z-index:1000;display:none;pointer-events:none;
+    background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:.72rem;
+    padding:.3rem .55rem;border-radius:6px;box-shadow:var(--shadow);max-width:260px}
+  @media (prefers-color-scheme:dark){.hpc-tooltip{background:var(--paper);color:var(--ink);border:1px solid var(--line)}}
+
+  .atlas-list{display:flex;flex-direction:column;gap:.6rem}
+  .atlas-row{display:grid;grid-template-columns:14px 1fr;gap:.6rem;align-items:start;padding:.4rem 0;border-bottom:1px solid var(--line)}
+  .atlas-swatch{width:14px;height:14px;border-radius:4px;margin-top:.2rem;flex:none}
+  .atlas-name{font-size:.85rem;margin-bottom:.15rem}
+  .atlas-desc{font-size:.78rem;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -94,7 +105,9 @@
 <div class="tabs">
   <div class="tab on" data-tab="cohort">Cohort</div>
   <div class="tab" data-tab="slide">Slide</div>
+  <div class="tab" data-tab="atlas">HPC atlas</div>
 </div>
+<div class="hpc-tooltip" id="hpcTooltip"></div>
 
 <div id="app">
 <div class="wrap">
@@ -128,6 +141,14 @@
         <div class="panels" id="panels"></div>
         <h2>HPC composition</h2>
         <div id="hpcChart"></div>
+      </div>
+    </div>
+
+    <!-- HPC atlas view -->
+    <div id="atlasView" style="display:none">
+      <div class="panel">
+        <h2>Histological phenotype clusters (HPC)</h2>
+        <div class="atlas-list" id="atlasList"></div>
       </div>
     </div>
   </div>

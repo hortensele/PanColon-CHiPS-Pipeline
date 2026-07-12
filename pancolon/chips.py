@@ -5,9 +5,13 @@ eval.py (step 7, `--split all`) writes one predictions.csv per fold under:
 with columns: slide_id, case_id, institution, time, event, risk.
 
 The CHiPS score for a case is the mean of its per-fold risk (the same
-leave-one-institution-out ensemble used in the paper). We also report a cohort
-percentile rank, which is the stable, cohort-relative summary collaborators use
-for stratification.
+leave-one-institution-out ensemble used in the paper). We also stratify each
+case into a low/intermediate/high tertile using FIXED cutpoints (not a
+cohort-relative rank), so a "high" label means the same thing regardless of
+which other slides happen to be in this run. The cutpoints are the q33/q67 of
+the colon_united training cohort's own patient-level out-of-fold risk
+(folds_OOF_predictions.csv for the shipped exp_code) — see
+infer.chips_tertile_thresholds in config/pipeline*.yaml.
 """
 from __future__ import annotations
 
@@ -16,6 +20,10 @@ import os
 
 import numpy as np
 import pandas as pd
+
+# colon_united patient-level OOF q33/q67 for the shipped `_p4_big` checkpoints
+# (n=1025). Used unless config sets infer.chips_tertile_thresholds explicitly.
+DEFAULT_TERTILE_THRESHOLDS = (-1.0711, -0.2129)
 
 
 def _eval_dir(cfg):
@@ -59,19 +67,27 @@ def aggregate_folds(cfg, out_dir):
     risk_cols = [c for c in merged.columns if c.startswith("risk_fold")]
     merged["chips_score"] = merged[risk_cols].mean(axis=1, skipna=True)
     merged["n_folds"] = merged[risk_cols].notna().sum(axis=1)
-    merged["chips_percentile"] = merged["chips_score"].rank(pct=True) * 100.0
-    # Tertile stratification (low / intermediate / high risk).
-    try:
-        merged["chips_tertile"] = pd.qcut(
-            merged["chips_score"], 3, labels=["low", "intermediate", "high"])
-    except (ValueError, IndexError):
-        merged["chips_tertile"] = np.nan
+
+    # Tertile stratification (low / intermediate / high risk) using FIXED
+    # cutpoints from the training cohort, not this cohort's own quantiles —
+    # a "high" tertile must mean the same thing across every run.
+    q33, q67 = inf.get("chips_tertile_thresholds", DEFAULT_TERTILE_THRESHOLDS)
+
+    def _tertile(v):
+        if pd.isna(v):
+            return np.nan
+        if v < q33:
+            return "low"
+        if v <= q67:
+            return "intermediate"
+        return "high"
+
+    merged["chips_tertile"] = merged["chips_score"].map(_tertile)
 
     merged = merged.sort_values("chips_score", ascending=False)
     os.makedirs(out_dir, exist_ok=True)
     out_csv = os.path.join(out_dir, "chips_scores.csv")
-    ordered = [id_col, "chips_score", "chips_percentile", "chips_tertile",
-               "n_folds"] + risk_cols
+    ordered = [id_col, "chips_score", "chips_tertile", "n_folds"] + risk_cols
     merged[ordered].to_csv(out_csv, index=False)
     print(f"[chips] wrote CHiPS scores for {len(merged)} {id_col}s "
           f"(mean over {len(risk_cols)} folds) -> {out_csv}")

@@ -387,8 +387,7 @@ python pancolon_pipeline.py all \
         <p>The headline result — one row per patient.</p>
         <ul>
           <li><b>chips_score</b> — mean risk across folds</li>
-          <li><b>chips_percentile</b> — cohort-relative rank</li>
-          <li><b>chips_tertile</b> — low / intermediate / high</li>
+          <li><b>chips_tertile</b> — low / intermediate / high, via fixed cutpoints from the training cohort's own OOF risk (not this cohort's quantiles)</li>
         </ul>
       </div>
       <div class="panel">

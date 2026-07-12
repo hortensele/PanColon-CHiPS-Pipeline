@@ -150,6 +150,14 @@ def _cmap_rgba(values01, cmap_name="magma"):
     return cmap(np.clip(values01, 0.0, 1.0))  # (N,4) float RGBA
 
 
+# Attention is rendered with a diverging blue->red scale (RdBu_r: low=blue,
+# high=red) instead of magma, and normalized against the slide's own 2nd/98th
+# percentile rather than its raw min/max — a handful of extreme-attention
+# tiles would otherwise wash out the rest of the map to one flat colour.
+ATTENTION_CMAP = "RdBu_r"
+ATTENTION_PERCENTILE_CLIP = (2.0, 98.0)
+
+
 def _categorical_rgba(labels):
     rgba = np.zeros((len(labels), 4))
     for i, v in enumerate(labels):
@@ -159,8 +167,13 @@ def _categorical_rgba(labels):
     return rgba, {int(c): hpc_hex(c) for c in uniq}
 
 
-def _grid_image(coords, tid_to_value, categorical=False):
+def _grid_image(coords, tid_to_value, categorical=False, cmap_name="magma",
+                percentile_clip=None):
     """Rasterize {tile_id: value} onto the (col,row) grid.
+
+    ``percentile_clip``, if given as (lo, hi), sets vmin/vmax from those
+    percentiles of this slide's own values (instead of raw min/max) before
+    normalizing — robust to a few extreme outlier tiles.
 
     Returns (rgba_uint8[H,W,4], ncols, nrows, legend). ``legend`` describes the
     colour mapping: a {hpc: hex} dict for categorical, else {vmin,vmax,cmap}.
@@ -178,10 +191,19 @@ def _grid_image(coords, tid_to_value, categorical=False):
     if categorical:
         rgba, legend = _categorical_rgba(vals)
     else:
-        vmin, vmax = float(np.nanmin(vals)), float(np.nanmax(vals))
-        norm = (vals - vmin) / (vmax - vmin) if vmax > vmin else np.zeros_like(vals)
-        rgba = _cmap_rgba(norm)
-        legend = {"vmin": vmin, "vmax": vmax, "cmap": "magma"}
+        if percentile_clip:
+            lo, hi = percentile_clip
+            vmin, vmax = float(np.nanpercentile(vals, lo)), float(np.nanpercentile(vals, hi))
+        else:
+            vmin, vmax = float(np.nanmin(vals)), float(np.nanmax(vals))
+        if vmax > vmin:
+            norm = (np.clip(vals, vmin, vmax) - vmin) / (vmax - vmin)
+        else:
+            norm = np.zeros_like(vals)
+        rgba = _cmap_rgba(norm, cmap_name)
+        legend = {"vmin": vmin, "vmax": vmax, "cmap": cmap_name}
+        if percentile_clip:
+            legend["percentile_clip"] = list(percentile_clip)
 
     img = np.zeros((nrows, ncols, 4), dtype=np.uint8)
     for (col, row), rc in zip([(int(round(c[0])) - x0, int(round(c[1])) - y0)
@@ -215,7 +237,9 @@ def _layer_grid(work, dataset, model_key, slide_id, kind):
         tile_ids, attn = load_attention(work, slide_id)
         if tile_ids is None or attn is None or len(tile_ids) != len(attn):
             return None, 0, 0, None
-        return _grid_image(coords, dict(zip(tile_ids, attn)), categorical=False)
+        return _grid_image(coords, dict(zip(tile_ids, attn)), categorical=False,
+                           cmap_name=ATTENTION_CMAP,
+                           percentile_clip=ATTENTION_PERCENTILE_CLIP)
     if kind == "hpc":
         tid_to_hpc = _slide_tile_hpc(work, dataset, slide_id)
         if not tid_to_hpc:
@@ -333,6 +357,36 @@ def _slide_tile_hpc(work, dataset, slide_id):
     if "tile_id" not in sub.columns:
         return {}
     return dict(zip(sub["tile_id"].astype(str), sub["hpc"]))
+
+
+def hpc_grid(work, dataset, model_key, slide_id):
+    """Return this slide's HPC tile grid, for the viewer's hover tooltip.
+
+    Same (col,row) indexing as the rasterized hpc.png layer (see _grid_image),
+    so the browser can map a fractional (u,v) position on that image straight
+    to a grid cell and look up which HPC id is under the cursor.
+
+    Returns {"ncols","nrows","x0","y0","cells": {"col,row": hpc_id}} or None.
+    """
+    coords = load_tile_coords(work, dataset, model_key, slide_id)
+    if not coords:
+        return None
+    tid_to_hpc = _slide_tile_hpc(work, dataset, slide_id)
+    if not tid_to_hpc:
+        return None
+    items = [(coords[t], tid_to_hpc[t]) for t in tid_to_hpc if t in coords]
+    if not items:
+        return None
+    xs = [int(round(c[0])) for c, _ in items]
+    ys = [int(round(c[1])) for c, _ in items]
+    x0, y0 = min(xs), min(ys)
+    ncols = max(xs) - x0 + 1
+    nrows = max(ys) - y0 + 1
+    cells = {}
+    for c, hpc in items:
+        col, row = int(round(c[0])) - x0, int(round(c[1])) - y0
+        cells[f"{col},{row}"] = int(hpc)
+    return {"ncols": ncols, "nrows": nrows, "x0": x0, "y0": y0, "cells": cells}
 
 
 def hpc_composition(work, dataset, slide_id):

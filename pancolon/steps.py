@@ -175,19 +175,31 @@ def step_tile(cfg, opts):
     wsi_dir = require(cfg, "paths.wsi_dir")
     out_dir = _mkdir(opts, _work(cfg, "tiles"))
     t = cfg.get("tile", {})
-    mag = cfg.get("magnification", "20x").rstrip("x")
     # DeepPATH expects a glob of slides as the positional argument.
     wsi_glob = os.path.join(wsi_dir, "*")
+    # Match the training tiling: select the level by physical pixel size
+    # (-P 0.504 um/px, more robust than magnification across scanners) and apply
+    # the same Reinhard stain normalization (-N) the encoder was trained on. The
+    # tiler still names the output dir by the derived magnification (ThisMag,
+    # e.g. 20.0), which step 2's --mag matches.
     argv = [
         "python", tiler,
         "-s", t.get("tile_size", 224),
         "-e", t.get("overlap", 0),
         "-j", t.get("workers", 8),
         "-B", t.get("background_threshold", 50),
-        "-M", mag,
+        "-M", t.get("mag", -1),
         "-o", os.path.join(out_dir, cfg.get("dataset_name", "cohort")),
-        wsi_glob,
     ]
+    if t.get("pixel_size") is not None:
+        argv += ["-P", t["pixel_size"]]
+    if t.get("pixelsize_range") is not None:
+        argv += ["-p", t["pixelsize_range"]]
+    if t.get("deviation") is not None:
+        argv += ["-D", t["deviation"]]
+    if t.get("normalize"):
+        argv += ["-N", t["normalize"]]
+    argv += [wsi_glob]
     return run_stage(cfg, step="tile", env=_activation(cfg, TILING_ENV_KEY)[0], modules=_activation(cfg, TILING_ENV_KEY)[1], argv=argv,
                      dry_run=opts.dry_run, no_env_switch=opts.no_env_switch)
 

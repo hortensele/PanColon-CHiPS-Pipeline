@@ -55,6 +55,41 @@ def _num(v):
         return None
 
 
+def _write_hpc_atlas(cfg, out_root):
+    """Convert the pathologist HPC id->description CSV into hpc_atlas.json.
+
+    Source CSV has columns `id` (e.g. "HPC0") and `description` (a pathology
+    sentence). We derive a short `name` from the text before the first " - "
+    (falling back to the full description) so the viewer has both a compact
+    label and the full text for a tooltip/atlas panel. Returns True if written.
+    """
+    exp = cfg.get("export", {}) or {}
+    src = os.path.join(cfg["repo_root"], exp.get("hpc_atlas", "viewer/hpc_atlas.csv"))
+    if not os.path.isfile(src):
+        print(f"[export] no HPC atlas at {src} — skipping (viewer will show bare HPC ids)")
+        return False
+    with open(src, encoding="utf-8-sig", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    atlas = []
+    for r in rows:
+        raw_id = (r.get("id") or "").strip()
+        m = raw_id.upper().replace("HPC", "").strip()
+        if not m.isdigit():
+            continue
+        hpc = int(m)
+        desc = (r.get("description") or "").strip()
+        name = desc.split(" - ", 1)[0].strip() if " - " in desc else desc
+        atlas.append({
+            "hpc": hpc, "id": raw_id, "name": name, "description": desc,
+            "color": ov.hpc_hex(hpc),
+        })
+    atlas.sort(key=lambda a: a["hpc"])
+    with open(os.path.join(out_root, "hpc_atlas.json"), "w") as fh:
+        json.dump(atlas, fh, indent=2)
+    print(f"[export] wrote hpc_atlas.json ({len(atlas)} clusters) from {src}")
+    return True
+
+
 def export_bundle(cfg, opts=None):
     """Build the static results bundle. Honors opts.dry_run for a preview."""
     dry = bool(getattr(opts, "dry_run", False))
@@ -92,7 +127,6 @@ def export_bundle(cfg, opts=None):
         # per-slide CHiPS
         row = chips_by_id.get(sid, {})
         entry["chips_score"] = _num(row.get("chips_score"))
-        entry["chips_percentile"] = _num(row.get("chips_percentile"))
         entry["chips_tertile"] = row.get("chips_tertile") or None
 
         # H&E deep-zoom pyramid
@@ -127,6 +161,15 @@ def export_bundle(cfg, opts=None):
         # HPC composition (for the per-slide bar chart)
         entry["composition"] = ov.hpc_composition(work, dataset, sid)
 
+        # HPC tile grid (for the hover tooltip on the HPC panel)
+        grid = ov.hpc_grid(work, dataset, model_key, sid)
+        if grid is not None:
+            with open(os.path.join(slide_dir, "hpc_grid.json"), "w") as fh:
+                json.dump(grid, fh)
+            entry["hpc_grid"] = "hpc_grid.json"
+        else:
+            entry["hpc_grid"] = None
+
         with open(os.path.join(slide_dir, "meta.json"), "w") as fh:
             json.dump(entry, fh, indent=2)
         manifest_slides.append(entry)
@@ -135,12 +178,17 @@ def export_bundle(cfg, opts=None):
     if os.path.isfile(chips_path):
         shutil.copyfile(chips_path, os.path.join(out_root, "cohort_results.csv"))
 
+    # HPC atlas (id -> pathologist description), so the viewer can label
+    # clusters by name instead of a bare number.
+    has_atlas = _write_hpc_atlas(cfg, out_root)
+
     # manifest
     manifest = {
         "dataset": dataset,
         "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
         "id_col": id_col,
         "n_slides": len(manifest_slides),
+        "hpc_atlas": "hpc_atlas.json" if has_atlas else None,
         "slides": manifest_slides,
     }
     with open(os.path.join(out_root, "manifest.json"), "w") as fh:

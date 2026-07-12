@@ -53,11 +53,18 @@ weights:
   survclam_runs_root: "/weights/survclam/runs"
 
 # ---- Step parameters (identical to config/pipeline.yaml; model-specific) ----
+# These match the exact tiling used to train the shipped encoder/checkpoints
+# (0b_tileLoop_deepzoom6.py -M -1 -P 0.504 -D 15 -p -1 -N '57,22,-8,20,10,5').
 tile:
   tile_size: 224
   overlap: 0
   background_threshold: 50
   workers: 8
+  mag: -1
+  pixel_size: 0.504
+  deviation: 15
+  pixelsize_range: -1
+  normalize: "57,22,-8,20,10,5"
 
 project:
   rep_key: "img_z_latent"
@@ -97,6 +104,9 @@ infer:
   pt_id_col: "slide_id"
   k: 16
   chips_folds: "all"
+  # Fixed low/intermediate/high cutpoints (colon_united patient-level OOF
+  # q33/q67 for the shipped _p4_big model) — see config/pipeline.yaml for detail.
+  chips_tertile_thresholds: [-1.0711, -0.2129]
 
 attention:
   which_sets: "test"
@@ -105,3 +115,4 @@ attention:
 # ---- Results bundle for the static viewer (step `export`) ------------------
 export:
   bundle_dir: "/out/bundle"
+  hpc_atlas: "viewer/hpc_atlas.csv"   # relative to repo_root (/opt/pancolon)

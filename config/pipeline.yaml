@@ -75,11 +75,20 @@ weights:
 # ==========================================================================
 
 # ---- Step 1: tiling (DeepPATH) -------------------------------------------
+# These match the exact tiling used to train the shipped encoder/checkpoints
+# (0b_tileLoop_deepzoom6.py -M -1 -P 0.504 -D 15 -p -1 -N '57,22,-8,20,10,5').
+# Do not change unless you are retraining: mismatched tiling (esp. missing
+# stain normalization) shifts the feature distribution the models expect.
 tile:
   tile_size: 224         # pixels per tile edge (HPL h224)
   overlap: 0
   background_threshold: 50   # % background above which a tile is dropped
   workers: 8
+  mag: -1                # -1 => select level by pixel size (-P), not magnification
+  pixel_size: 0.504       # target microns/pixel (20x-equivalent for this scanner family)
+  deviation: 15           # allowed +/- deviation (%) from pixel_size when picking a level
+  pixelsize_range: -1     # -1 => no secondary range constraint (matches training)
+  normalize: "57,22,-8,20,10,5"   # Reinhard stain-normalization target stats
 
 # ---- Step 3: HPL projection ----------------------------------------------
 project:
@@ -136,12 +145,22 @@ infer:
   k: 16                          # number of LOIO folds shipped (s_0 .. s_15)
   # CHiPS = mean of per-fold risk. Which folds to average ("all" or e.g. "0,1,2").
   chips_folds: "all"
+  # Low/intermediate/high cutpoints for chips_tertile. FIXED (not cohort-relative
+  # quantiles) so "high" means the same thing across runs: these are the q33/q67
+  # of colon_united's own patient-level OOF risk for the shipped _p4_big model.
+  # Do not change unless the shipped checkpoints (exp_code above) change.
+  chips_tertile_thresholds: [-1.0711, -0.2129]
 
 # ---- Step 8: attention / CHiPS maps --------------------------------------
 attention:
   which_sets: "test"
   overlay_dpi: 150
   # rendered by notebooks/attention_overlay.ipynb using these + the WSIs
+
+# ---- Results bundle for the static viewer (step `export`) -----------------
+export:
+  bundle_dir: ""                 # "" => {work_dir}/bundle
+  hpc_atlas: "viewer/hpc_atlas.csv"   # path (relative to repo_root) of the HPC id -> description table
 
 # ---- SLURM (only used by scripts/slurm/*) ---------------------------------
 slurm:
