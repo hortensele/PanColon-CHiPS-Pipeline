@@ -168,6 +168,10 @@ def _activation(cfg, key):
 # Step 1 — tile WSIs at 20x (DeepPATH)
 # --------------------------------------------------------------------------
 
+_WSI_EXTENSIONS = (".svs", ".tif", ".tiff", ".ndpi", ".mrxs", ".scn",
+                    ".vms", ".vmu", ".svslide", ".bif")
+
+
 def step_tile(cfg, opts):
     deeppath = _tool(cfg, "deeppath")
     tiler = os.path.join(deeppath, "DeepPATH_code", "00_preprocessing",
@@ -175,8 +179,23 @@ def step_tile(cfg, opts):
     wsi_dir = require(cfg, "paths.wsi_dir")
     out_dir = _mkdir(opts, _work(cfg, "tiles"))
     t = cfg.get("tile", {})
-    # DeepPATH expects a glob of slides as the positional argument.
-    wsi_glob = os.path.join(wsi_dir, "*")
+    # DeepPATH expects a glob of slides as the positional argument, and derives
+    # its ImgExtension (format-specific handling) from that glob's own suffix —
+    # so scope it to the WSI extension actually present rather than "*", both to
+    # avoid handing non-slide files (READMEs, .DS_Store) to openslide and to get
+    # the right format handling.
+    exts = {os.path.splitext(f)[1].lower() for f in os.listdir(wsi_dir)
+            if os.path.splitext(f)[1].lower() in _WSI_EXTENSIONS}
+    if not exts:
+        raise SystemExit(
+            f"[tile] No recognized WSI files ({', '.join(_WSI_EXTENSIONS)}) "
+            f"found in {wsi_dir}")
+    if len(exts) > 1:
+        raise SystemExit(
+            f"[tile] {wsi_dir} has mixed WSI extensions ({sorted(exts)}) — "
+            "run one extension per pipeline invocation (DeepPATH's tiler "
+            "derives format-specific handling from the glob extension).")
+    wsi_glob = os.path.join(wsi_dir, f"*{exts.pop()}")
     # Match the training tiling: select the level by physical pixel size
     # (-P 0.504 um/px, more robust than magnification across scanners) and apply
     # the same Reinhard stain normalization (-N) the encoder was trained on. The
