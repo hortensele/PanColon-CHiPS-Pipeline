@@ -235,10 +235,16 @@ def step_to_hdf5(cfg, opts):
     out_h5 = _hdf5_path(cfg)
     _mkdir(opts, os.path.dirname(out_h5))
     t = cfg.get("tile", {})
-    # Step 1 wrote tiles under <slide>_files/<mag>.0/; the converter globs
-    # <slide>_files/str(--mag)/ (mode 1), so --mag MUST match the tiling
-    # magnification or it silently finds 0 images. Its default (2.016) is wrong.
-    mag = cfg.get("magnification", "20x").rstrip("x")
+    # Step 1 tiles by physical pixel size (-P), and the tiler's <mag>.0/ output
+    # folder is named after each slide's own *declared* objective power in its
+    # header (20.0, 40.0, ...) -- which varies by scanner even though every
+    # slide lands on the same target pixel size. When -P is used the tiler also
+    # symlinks a stable str(pixel_size)/ folder (e.g. "0.504") alongside it, so
+    # glob that instead of a magnification that can differ slide to slide. The
+    # converter globs <slide>_files/str(--mag)/ (mode 1), so --mag MUST match
+    # whichever folder name is actually on disk or it silently finds 0 images.
+    mag = t["pixel_size"] if t.get("pixel_size") is not None \
+        else cfg.get("magnification", "20x").rstrip("x")
     argv = [
         "python", conv,
         "--input_path", tiles_dir,
