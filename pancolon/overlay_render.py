@@ -151,11 +151,20 @@ def _cmap_rgba(values01, cmap_name="magma"):
 
 
 # Attention is rendered with a diverging blue->red scale (RdBu_r: low=blue,
-# high=red) instead of magma, and normalized against the slide's own 2nd/98th
-# percentile rather than its raw min/max — a handful of extreme-attention
-# tiles would otherwise wash out the rest of the map to one flat colour.
+# high=red). CLAM-style attention weights are heavily right-skewed (most tiles
+# near zero, a small tail dominant), so even a 2nd/98th-percentile-clipped
+# linear scale crushes almost every tile into the low (blue) end and nothing
+# reads as "high". Normalizing by percentile rank instead spreads tiles
+# uniformly across the full colour range by relative order, so the
+# high-attention tail reliably pops red regardless of the raw distribution's
+# shape.
 ATTENTION_CMAP = "RdBu_r"
-ATTENTION_PERCENTILE_CLIP = (2.0, 98.0)
+
+
+def _rank_normalize(vals):
+    """Map values to [0,1] by percentile rank rather than raw magnitude."""
+    ranks = vals.argsort().argsort()
+    return ranks / max(len(vals) - 1, 1)
 
 
 def _categorical_rgba(labels):
@@ -168,12 +177,13 @@ def _categorical_rgba(labels):
 
 
 def _grid_image(coords, tid_to_value, categorical=False, cmap_name="magma",
-                percentile_clip=None):
+                rank_normalize=False):
     """Rasterize {tile_id: value} onto the (col,row) grid.
 
-    ``percentile_clip``, if given as (lo, hi), sets vmin/vmax from those
-    percentiles of this slide's own values (instead of raw min/max) before
-    normalizing — robust to a few extreme outlier tiles.
+    ``rank_normalize``, if set, colours tiles by their percentile rank among
+    this slide's own values instead of a linear min/max scale — robust to
+    (and in fact designed for) heavy-tailed distributions like attention
+    weights, where a linear scale leaves almost everything one flat colour.
 
     Returns (rgba_uint8[H,W,4], ncols, nrows, legend). ``legend`` describes the
     colour mapping: a {hpc: hex} dict for categorical, else {vmin,vmax,cmap}.
@@ -191,19 +201,17 @@ def _grid_image(coords, tid_to_value, categorical=False, cmap_name="magma",
     if categorical:
         rgba, legend = _categorical_rgba(vals)
     else:
-        if percentile_clip:
-            lo, hi = percentile_clip
-            vmin, vmax = float(np.nanpercentile(vals, lo)), float(np.nanpercentile(vals, hi))
-        else:
-            vmin, vmax = float(np.nanmin(vals)), float(np.nanmax(vals))
-        if vmax > vmin:
-            norm = (np.clip(vals, vmin, vmax) - vmin) / (vmax - vmin)
+        vmin, vmax = float(np.nanmin(vals)), float(np.nanmax(vals))
+        if rank_normalize:
+            norm = _rank_normalize(vals)
+        elif vmax > vmin:
+            norm = (vals - vmin) / (vmax - vmin)
         else:
             norm = np.zeros_like(vals)
         rgba = _cmap_rgba(norm, cmap_name)
         legend = {"vmin": vmin, "vmax": vmax, "cmap": cmap_name}
-        if percentile_clip:
-            legend["percentile_clip"] = list(percentile_clip)
+        if rank_normalize:
+            legend["normalize"] = "rank"
 
     img = np.zeros((nrows, ncols, 4), dtype=np.uint8)
     for (col, row), rc in zip([(int(round(c[0])) - x0, int(round(c[1])) - y0)
@@ -238,8 +246,7 @@ def _layer_grid(work, dataset, model_key, slide_id, kind):
         if tile_ids is None or attn is None or len(tile_ids) != len(attn):
             return None, 0, 0, None
         return _grid_image(coords, dict(zip(tile_ids, attn)), categorical=False,
-                           cmap_name=ATTENTION_CMAP,
-                           percentile_clip=ATTENTION_PERCENTILE_CLIP)
+                           cmap_name=ATTENTION_CMAP, rank_normalize=True)
     if kind == "hpc":
         tid_to_hpc = _slide_tile_hpc(work, dataset, slide_id)
         if not tid_to_hpc:
