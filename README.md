@@ -14,6 +14,8 @@ HPL-PanColon encoder and the SurvCLAM survival model from the PanColon-CHiPS stu
 > **Inference only.** This repo does not train anything. The trained weights are
 > downloaded separately (see [2. Download the weights](#2-download-the-trained-weights)).
 
+![PanColon-CHiPS inference pipeline: whole-slide image through Stage 1 (tile, to_hdf5, project, cluster_filter, assign_hpc) and Stage 2 (build_pt, infer_survival, attention_map) to a CHiPS score and attention/HPC overlays](docs/figures/inference_pipeline.png)
+
 ```
 WSIs ──▶ tile ──▶ hdf5 ──▶ HPL encoder ──▶ HPC assign + artifact filter
      ──▶ .pt store ──▶ SurvCLAM folds ──▶ CHiPS score ──▶ attention overlays
