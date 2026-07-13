@@ -19,6 +19,8 @@
   let syncing = false;
   let ATLAS = {};            // hpc id (int) -> {hpc,id,name,description,color}
   let currentHpcGrid = null; // {ncols,nrows,x0,y0,cells} for the slide on screen
+  let currentAspect = 1;     // current slide's H/W, for grid<->viewport math
+  let hoverCell = null;      // {col,row} last hovered tile, or null
 
   document.addEventListener("DOMContentLoaded", init);
 
@@ -61,6 +63,9 @@
     el.innerHTML = atlas.map((a) => `
       <div class="atlas-row">
         <span class="atlas-swatch" style="background:${a.color || "var(--muted)"}"></span>
+        ${a.image
+          ? `<img class="atlas-thumb" src="${a.image}" alt="HPC ${a.hpc} example tile">`
+          : '<span class="atlas-thumb-ph"></span>'}
         <div class="atlas-body">
           <div class="atlas-name"><b>HPC ${a.hpc}</b> — ${escapeHtml(a.name || "")}</div>
           <div class="atlas-desc">${escapeHtml(a.description || "")}</div>
@@ -204,6 +209,8 @@
       <div class="c"><div class="n">${s.chips_score != null ? Number(s.chips_score).toFixed(3) : "—"}</div><div class="l">CHiPS score</div></div>`;
 
     currentHpcGrid = null;
+    hoverCell = null;
+    currentAspect = s.aspect || 1;
     if (s.hpc_grid) {
       fetch(`slides/${encodeURIComponent(sid)}/${s.hpc_grid}`)
         .then((r) => r.json()).then((g) => { currentHpcGrid = g; }).catch(() => {});
@@ -225,6 +232,9 @@
     title.className = "panel-title"; title.textContent = layer.label;
     const host = document.createElement("div");
     host.className = "osd"; host.id = "osd_" + layer.key;
+    const hl = document.createElement("div");
+    hl.className = "hpc-highlight";
+    host.appendChild(hl);
     wrap.append(title, host);
     grid.appendChild(wrap);
 
@@ -248,39 +258,78 @@
       gestureSettingsMouse: { clickToZoom: false },
     });
     v._layerKey = layer.key;
-    if (layer.key === "hpc") wireHpcTooltip(v, host, s);
+    v._highlightEl = hl;
+    wireHover(v, host);
     return v;
   }
 
-  // Hovering the HPC panel looks up the tile under the cursor via
-  // hpc_grid.json and shows "HPC N — <name>" in a floating tooltip. All three
-  // layers share the same normalized [0,1]x[0,aspect] extent (see file header),
-  // so pointFromPixel gives (u, v*aspect) directly — no need to know the
-  // hpc.png's actual pixel dimensions.
-  function wireHpcTooltip(v, host, s) {
-    const tip = document.getElementById("hpcTooltip");
-    if (!tip) return;
+  // Hovering ANY panel looks up the tile under the cursor via hpc_grid.json —
+  // it carries HPC identity for every tile regardless of which layer you're
+  // looking at — and (a) shows "HPC N — <name>" in a floating tooltip, and
+  // (b) draws a matching highlight box on all three panels at that tile's
+  // location, so the H&E/attention views make it obvious where on the slide
+  // the hovered HPC tile actually is. All three layers share the same
+  // normalized [0,1]x[0,aspect] extent (see file header), so pointFromPixel /
+  // pixelFromPoint translate between a panel's screen and grid coordinates
+  // without needing to know any layer's raw pixel dimensions.
+  function wireHover(v, host) {
     host.addEventListener("mousemove", (e) => {
-      if (!currentHpcGrid) { tip.style.display = "none"; return; }
+      if (!currentHpcGrid) { hideHover(); return; }
       const rect = host.getBoundingClientRect();
       const px = new OpenSeadragon.Point(e.clientX - rect.left, e.clientY - rect.top);
       const vp = v.viewport.pointFromPixel(px);
-      const aspect = s.aspect || 1;
-      const u = vp.x, w = vp.y / aspect;
-      if (u < 0 || u > 1 || w < 0 || w > 1) { tip.style.display = "none"; return; }
+      const u = vp.x, w = vp.y / currentAspect;
+      if (u < 0 || u > 1 || w < 0 || w > 1) { hideHover(); return; }
       const col = Math.floor(u * currentHpcGrid.ncols);
       const row = Math.floor(w * currentHpcGrid.nrows);
       const hpc = currentHpcGrid.cells[`${col},${row}`];
-      if (hpc == null) { tip.style.display = "none"; return; }
-      const a = ATLAS[hpc];
-      tip.innerHTML = a && a.name
-        ? `<b>HPC ${hpc}</b> — ${escapeHtml(a.name)}`
-        : `<b>HPC ${hpc}</b>`;
-      tip.style.left = (e.clientX + 14) + "px";
-      tip.style.top = (e.clientY + 14) + "px";
-      tip.style.display = "block";
+      if (hpc == null) { hideHover(); return; }
+      hoverCell = { col, row };
+      showTooltip(e.clientX, e.clientY, hpc);
+      paintHighlights();
     });
-    host.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+    host.addEventListener("mouseleave", () => { hoverCell = null; hideHover(); });
+  }
+
+  function showTooltip(x, y, hpc) {
+    const tip = document.getElementById("hpcTooltip");
+    if (!tip) return;
+    const a = ATLAS[hpc];
+    tip.innerHTML = a && a.name
+      ? `<b>HPC ${hpc}</b> — ${escapeHtml(a.name)}`
+      : `<b>HPC ${hpc}</b>`;
+    tip.style.left = (x + 14) + "px";
+    tip.style.top = (y + 14) + "px";
+    tip.style.display = "block";
+  }
+
+  function hideHover() {
+    const tip = document.getElementById("hpcTooltip");
+    if (tip) tip.style.display = "none";
+    viewers.forEach((v) => { if (v._highlightEl) v._highlightEl.style.display = "none"; });
+  }
+
+  // Position the highlight box on every panel over the current hoverCell's
+  // grid square, in that panel's own current pan/zoom (pixelFromPoint), so it
+  // stays put under the cursor's panel and lands at the *same slide location*
+  // in the other two even though each is a separate OSD instance.
+  function paintHighlights() {
+    if (!hoverCell || !currentHpcGrid) return;
+    const g = currentHpcGrid;
+    const u0 = hoverCell.col / g.ncols, u1 = (hoverCell.col + 1) / g.ncols;
+    const w0 = (hoverCell.row / g.nrows) * currentAspect;
+    const w1 = ((hoverCell.row + 1) / g.nrows) * currentAspect;
+    viewers.forEach((v) => {
+      const el = v._highlightEl;
+      if (!el) return;
+      const p0 = v.viewport.pixelFromPoint(new OpenSeadragon.Point(u0, w0), true);
+      const p1 = v.viewport.pixelFromPoint(new OpenSeadragon.Point(u1, w1), true);
+      el.style.left = Math.min(p0.x, p1.x) + "px";
+      el.style.top = Math.min(p0.y, p1.y) + "px";
+      el.style.width = Math.max(1, Math.abs(p1.x - p0.x)) + "px";
+      el.style.height = Math.max(1, Math.abs(p1.y - p0.y)) + "px";
+      el.style.display = "block";
+    });
   }
 
   // Propagate viewport center+zoom from whichever viewer the user drives to the
@@ -299,6 +348,7 @@
           o.viewport.panTo(c, true);
         });
         syncing = false;
+        paintHighlights();
       };
       v.addHandler("zoom", push);
       v.addHandler("pan", push);
@@ -351,6 +401,16 @@
       val.className = "hpc-val"; val.textContent = (r.frac * 100).toFixed(1) + "%";
       row.append(label, track, val);
       container.appendChild(row);
+      if (a && a.description) {
+        const desc = document.createElement("div");
+        desc.className = "hpc-desc";
+        desc.textContent = truncate(a.description, 130);
+        container.appendChild(desc);
+      }
     });
+  }
+
+  function truncate(s, n) {
+    return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + "…" : s;
   }
 })();

@@ -307,8 +307,11 @@ def _overlay(slide, kind):
     if key not in _overlay_cache:
         cfg = active_cfg()
         work, dataset, model_key, wsi_dir = _paths(cfg)
+        tile_cfg = cfg.get("tile", {}) or {}
         _overlay_cache[key] = overlay_render.render_overlay_png(
-            work, dataset, model_key, wsi_dir, slide, kind)
+            work, dataset, model_key, wsi_dir, slide, kind,
+            tile_size_px=tile_cfg.get("tile_size", 224),
+            pixel_size_um=tile_cfg.get("pixel_size", 0.504))
     return _overlay_cache[key]
 
 

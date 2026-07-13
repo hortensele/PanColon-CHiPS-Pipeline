@@ -55,6 +55,22 @@ def _num(v):
         return None
 
 
+_EXAMPLE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _find_example_image(examples_dir, raw_id):
+    """Match a representative-tile image for one HPC id (case-insensitive
+    filename stem, e.g. "HPC0.jpg" or "hpc0.png" both match id "HPC0")."""
+    if not examples_dir or not os.path.isdir(examples_dir):
+        return None
+    target = raw_id.strip().lower()
+    for name in os.listdir(examples_dir):
+        stem, ext = os.path.splitext(name)
+        if stem.lower() == target and ext.lower() in _EXAMPLE_EXTS:
+            return os.path.join(examples_dir, name)
+    return None
+
+
 def _write_hpc_atlas(cfg, out_root):
     """Convert the pathologist HPC id->description CSV into hpc_atlas.json.
 
@@ -62,15 +78,22 @@ def _write_hpc_atlas(cfg, out_root):
     sentence). We derive a short `name` from the text before the first " - "
     (falling back to the full description) so the viewer has both a compact
     label and the full text for a tooltip/atlas panel. Returns True if written.
+
+    Also picks up an optional representative-tile image per HPC from
+    viewer/hpc_examples/ (sibling of the atlas CSV; see its README) and
+    copies matched ones into the bundle so the atlas panel can show a
+    thumbnail alongside the text description.
     """
     exp = cfg.get("export", {}) or {}
     src = os.path.join(cfg["repo_root"], exp.get("hpc_atlas", "viewer/hpc_atlas.csv"))
     if not os.path.isfile(src):
         print(f"[export] no HPC atlas at {src} — skipping (viewer will show bare HPC ids)")
         return False
+    examples_dir = os.path.join(os.path.dirname(src), "hpc_examples")
     with open(src, encoding="utf-8-sig", newline="") as fh:
         rows = list(csv.DictReader(fh))
     atlas = []
+    n_images = 0
     for r in rows:
         raw_id = (r.get("id") or "").strip()
         m = raw_id.upper().replace("HPC", "").strip()
@@ -79,14 +102,24 @@ def _write_hpc_atlas(cfg, out_root):
         hpc = int(m)
         desc = (r.get("description") or "").strip()
         name = desc.split(" - ", 1)[0].strip() if " - " in desc else desc
-        atlas.append({
+        entry = {
             "hpc": hpc, "id": raw_id, "name": name, "description": desc,
             "color": ov.hpc_hex(hpc),
-        })
+        }
+        example = _find_example_image(examples_dir, raw_id)
+        if example:
+            dst_dir = os.path.join(out_root, "hpc_examples")
+            os.makedirs(dst_dir, exist_ok=True)
+            dst_name = f"{raw_id}{os.path.splitext(example)[1].lower()}"
+            shutil.copyfile(example, os.path.join(dst_dir, dst_name))
+            entry["image"] = f"hpc_examples/{dst_name}"
+            n_images += 1
+        atlas.append(entry)
     atlas.sort(key=lambda a: a["hpc"])
     with open(os.path.join(out_root, "hpc_atlas.json"), "w") as fh:
         json.dump(atlas, fh, indent=2)
-    print(f"[export] wrote hpc_atlas.json ({len(atlas)} clusters) from {src}")
+    print(f"[export] wrote hpc_atlas.json ({len(atlas)} clusters, "
+          f"{n_images} with example images) from {src}")
     return True
 
 
@@ -99,6 +132,10 @@ def export_bundle(cfg, opts=None):
     wsi_dir = cfg["paths"]["wsi_dir"]
     out_root = _bundle_dir(cfg)
     viewer_src = os.path.join(cfg["repo_root"], "viewer")
+
+    tile_cfg = cfg.get("tile", {}) or {}
+    tile_size_px = tile_cfg.get("tile_size", 224)
+    pixel_size_um = tile_cfg.get("pixel_size", 0.504)
 
     slides = ov.list_slides(work, dataset, model_key)
     chips_by_id, id_col, chips_path = _read_chips(work)
@@ -146,7 +183,8 @@ def export_bundle(cfg, opts=None):
         # HPC + attention layer images (full-extent, slide aspect)
         for kind in ("hpc", "attention"):
             png, aspect_h, legend = ov.render_layer_image(
-                work, dataset, model_key, wsi_dir, sid, kind)
+                work, dataset, model_key, wsi_dir, sid, kind,
+                tile_size_px=tile_size_px, pixel_size_um=pixel_size_um)
             if png is None:
                 entry[kind] = None
                 continue
@@ -162,7 +200,8 @@ def export_bundle(cfg, opts=None):
         entry["composition"] = ov.hpc_composition(work, dataset, sid)
 
         # HPC tile grid (for the hover tooltip on the HPC panel)
-        grid = ov.hpc_grid(work, dataset, model_key, sid)
+        grid = ov.hpc_grid(work, dataset, model_key, sid, wsi_path=wsi,
+                           tile_size_px=tile_size_px, pixel_size_um=pixel_size_um)
         if grid is not None:
             with open(os.path.join(slide_dir, "hpc_grid.json"), "w") as fh:
                 json.dump(grid, fh)

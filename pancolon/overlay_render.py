@@ -176,26 +176,77 @@ def _categorical_rgba(labels):
     return rgba, {int(c): hpc_hex(c) for c in uniq}
 
 
-def _grid_image(coords, tid_to_value, categorical=False, cmap_name="magma",
+def _full_grid_extent(wsi_path, tile_size_px, pixel_size_um):
+    """(cols, rows) a tile grid of tile_size_px @ pixel_size_um/px would need to
+    span the WHOLE slide, edge to edge -- i.e. the tile grid's true coordinate
+    space, as opposed to just the bounding box of the tissue tiles that
+    survived background/artifact filtering. Tile ids carry *absolute* grid
+    indices from the original tiling pass, so without this a slide whose
+    tissue occupies (say) the top-left quarter of the frame would have that
+    quarter's tile bounding box stretched to fill the entire rendered layer --
+    visibly misaligned against the H&E, worst on slides where the tissue's own
+    aspect ratio differs most from the full slide's.
+
+    Returns None if the slide can't be opened or has no mpp metadata (caller
+    falls back to the tissue tiles' own bounding box).
+    """
+    if not wsi_path:
+        return None
+    try:
+        import openslide
+        with openslide.OpenSlide(wsi_path) as s:
+            w0, h0 = s.dimensions
+            mpp_x = float(s.properties.get(openslide.PROPERTY_NAME_MPP_X, 0) or 0)
+            mpp_y = float(s.properties.get(openslide.PROPERTY_NAME_MPP_Y, 0) or 0)
+    except Exception:
+        return None
+    if not mpp_x or not mpp_y:
+        return None
+    tile_um = tile_size_px * pixel_size_um
+    return (w0 * mpp_x) / tile_um, (h0 * mpp_y) / tile_um
+
+
+def _grid_extent(items, wsi_path, tile_size_px, pixel_size_um):
+    """Canvas size + origin for rasterizing ``items`` (see _grid_image).
+
+    Returns (ncols, nrows, ox, oy): place each tile at (col-ox, row-oy).
+    Prefers the full-slide grid extent (origin (0,0), since tile ids are
+    already absolute indices) so a partial-tissue bounding box doesn't get
+    stretched to fill the whole slide; falls back to the observed tiles' own
+    bounding box if the WSI/mpp isn't available.
+    """
+    xs = [int(round(x)) for (x, _y), _v in items]
+    ys = [int(round(y)) for (_x, y), _v in items]
+    x0, y0, xmax, ymax = min(xs), min(ys), max(xs), max(ys)
+    full = _full_grid_extent(wsi_path, tile_size_px, pixel_size_um)
+    if full:
+        full_cols, full_rows = full
+        # Guard against the mpp-based estimate slightly undershooting an
+        # observed tile index (rounding, or the tiler's own deviation range).
+        return (max(int(round(full_cols)), xmax + 1),
+                max(int(round(full_rows)), ymax + 1), 0, 0)
+    return xmax - x0 + 1, ymax - y0 + 1, x0, y0
+
+
+def _grid_image(coords, tid_to_value, wsi_path=None, tile_size_px=224,
+                pixel_size_um=0.504, categorical=False, cmap_name="magma",
                 rank_normalize=False):
-    """Rasterize {tile_id: value} onto the (col,row) grid.
+    """Rasterize {tile_id: value} onto the slide's (col,row) tile grid.
 
     ``rank_normalize``, if set, colours tiles by their percentile rank among
     this slide's own values instead of a linear min/max scale — robust to
     (and in fact designed for) heavy-tailed distributions like attention
     weights, where a linear scale leaves almost everything one flat colour.
 
-    Returns (rgba_uint8[H,W,4], ncols, nrows, legend). ``legend`` describes the
-    colour mapping: a {hpc: hex} dict for categorical, else {vmin,vmax,cmap}.
+    Returns (rgba_uint8[H,W,4], ncols, nrows, legend, (ox,oy)). ``legend``
+    describes the colour mapping: a {hpc: hex} dict for categorical, else
+    {vmin,vmax,cmap}. ``(ox,oy)`` is the origin subtracted from raw tile grid
+    indices to land in the [0,ncols)x[0,nrows) canvas (see _grid_extent).
     """
     items = [(coords[t], tid_to_value[t]) for t in tid_to_value if t in coords]
     if not items:
-        return None, 0, 0, None
-    xs = [int(round(c[0])) for c, _ in items]
-    ys = [int(round(c[1])) for c, _ in items]
-    x0, y0 = min(xs), min(ys)
-    ncols = max(xs) - x0 + 1
-    nrows = max(ys) - y0 + 1
+        return None, 0, 0, None, (0, 0)
+    ncols, nrows, ox, oy = _grid_extent(items, wsi_path, tile_size_px, pixel_size_um)
     vals = np.array([v for _, v in items], dtype=float)
 
     if categorical:
@@ -214,11 +265,12 @@ def _grid_image(coords, tid_to_value, categorical=False, cmap_name="magma",
             legend["normalize"] = "rank"
 
     img = np.zeros((nrows, ncols, 4), dtype=np.uint8)
-    for (col, row), rc in zip([(int(round(c[0])) - x0, int(round(c[1])) - y0)
+    for (col, row), rc in zip([(int(round(c[0])) - ox, int(round(c[1])) - oy)
                                for c, _ in items], rgba):
-        img[row, col] = [int(rc[0] * 255), int(rc[1] * 255),
-                         int(rc[2] * 255), 255]
-    return img, ncols, nrows, legend
+        if 0 <= row < nrows and 0 <= col < ncols:
+            img[row, col] = [int(rc[0] * 255), int(rc[1] * 255),
+                             int(rc[2] * 255), 255]
+    return img, ncols, nrows, legend, (ox, oy)
 
 
 def slide_dimensions(wsi_path):
@@ -233,7 +285,8 @@ def slide_dimensions(wsi_path):
         return None
 
 
-def _layer_grid(work, dataset, model_key, slide_id, kind):
+def _layer_grid(work, dataset, model_key, slide_id, kind, wsi_path=None,
+                tile_size_px=224, pixel_size_um=0.504):
     """Rasterize one slide's attention|hpc onto its (col,row) tile grid.
 
     Returns (rgba_uint8[H,W,4], ncols, nrows, legend) or (None, 0, 0, None).
@@ -245,13 +298,19 @@ def _layer_grid(work, dataset, model_key, slide_id, kind):
         tile_ids, attn = load_attention(work, slide_id)
         if tile_ids is None or attn is None or len(tile_ids) != len(attn):
             return None, 0, 0, None
-        return _grid_image(coords, dict(zip(tile_ids, attn)), categorical=False,
-                           cmap_name=ATTENTION_CMAP, rank_normalize=True)
+        img, ncols, nrows, legend, _origin = _grid_image(
+            coords, dict(zip(tile_ids, attn)), wsi_path=wsi_path,
+            tile_size_px=tile_size_px, pixel_size_um=pixel_size_um,
+            categorical=False, cmap_name=ATTENTION_CMAP, rank_normalize=True)
+        return img, ncols, nrows, legend
     if kind == "hpc":
         tid_to_hpc = _slide_tile_hpc(work, dataset, slide_id)
         if not tid_to_hpc:
             return None, 0, 0, None
-        return _grid_image(coords, tid_to_hpc, categorical=True)
+        img, ncols, nrows, legend, _origin = _grid_image(
+            coords, tid_to_hpc, wsi_path=wsi_path, tile_size_px=tile_size_px,
+            pixel_size_um=pixel_size_um, categorical=True)
+        return img, ncols, nrows, legend
     return None, 0, 0, None
 
 
@@ -264,7 +323,8 @@ def _slide_aspect(wsi_dir, slide_id, ncols, nrows):
     return nrows / ncols if ncols else 1.0
 
 
-def render_overlay_png(work, dataset, model_key, wsi_dir, slide_id, kind):
+def render_overlay_png(work, dataset, model_key, wsi_dir, slide_id, kind,
+                       tile_size_px=224, pixel_size_um=0.504):
     """Build the attention|hpc heatmap PNG for a slide (webapp overlay).
 
     Returns (png_bytes, placement, legend) or (None, None, None). ``placement``
@@ -273,7 +333,10 @@ def render_overlay_png(work, dataset, model_key, wsi_dir, slide_id, kind):
     """
     from PIL import Image
 
-    img, ncols, nrows, legend = _layer_grid(work, dataset, model_key, slide_id, kind)
+    wsi_path = find_wsi(wsi_dir, slide_id)
+    img, ncols, nrows, legend = _layer_grid(
+        work, dataset, model_key, slide_id, kind, wsi_path=wsi_path,
+        tile_size_px=tile_size_px, pixel_size_um=pixel_size_um)
     if img is None:
         return None, None, None
     height = _slide_aspect(wsi_dir, slide_id, ncols, nrows)
@@ -284,7 +347,7 @@ def render_overlay_png(work, dataset, model_key, wsi_dir, slide_id, kind):
 
 
 def render_layer_image(work, dataset, model_key, wsi_dir, slide_id, kind,
-                       max_px=4096):
+                       max_px=4096, tile_size_px=224, pixel_size_um=0.504):
     """Render a full-extent, slide-aspect PNG of one layer for the static viewer.
 
     Unlike render_overlay_png (a raw tile-grid image, meant to be *placed* over a
@@ -297,7 +360,10 @@ def render_layer_image(work, dataset, model_key, wsi_dir, slide_id, kind,
     """
     from PIL import Image
 
-    img, ncols, nrows, legend = _layer_grid(work, dataset, model_key, slide_id, kind)
+    wsi_path = find_wsi(wsi_dir, slide_id)
+    img, ncols, nrows, legend = _layer_grid(
+        work, dataset, model_key, slide_id, kind, wsi_path=wsi_path,
+        tile_size_px=tile_size_px, pixel_size_um=pixel_size_um)
     if img is None:
         return None, None, None
     aspect_h = _slide_aspect(wsi_dir, slide_id, ncols, nrows)  # H/W
@@ -366,12 +432,14 @@ def _slide_tile_hpc(work, dataset, slide_id):
     return dict(zip(sub["tile_id"].astype(str), sub["hpc"]))
 
 
-def hpc_grid(work, dataset, model_key, slide_id):
+def hpc_grid(work, dataset, model_key, slide_id, wsi_path=None,
+             tile_size_px=224, pixel_size_um=0.504):
     """Return this slide's HPC tile grid, for the viewer's hover tooltip.
 
-    Same (col,row) indexing as the rasterized hpc.png layer (see _grid_image),
-    so the browser can map a fractional (u,v) position on that image straight
-    to a grid cell and look up which HPC id is under the cursor.
+    Same (col,row) indexing (and the same full-slide extent, see
+    _grid_extent) as the rasterized hpc.png/attention.png layers, so the
+    browser can map a fractional (u,v) position on any of the three panels
+    straight to a grid cell and look up which HPC id is under the cursor.
 
     Returns {"ncols","nrows","x0","y0","cells": {"col,row": hpc_id}} or None.
     """
@@ -384,16 +452,13 @@ def hpc_grid(work, dataset, model_key, slide_id):
     items = [(coords[t], tid_to_hpc[t]) for t in tid_to_hpc if t in coords]
     if not items:
         return None
-    xs = [int(round(c[0])) for c, _ in items]
-    ys = [int(round(c[1])) for c, _ in items]
-    x0, y0 = min(xs), min(ys)
-    ncols = max(xs) - x0 + 1
-    nrows = max(ys) - y0 + 1
+    ncols, nrows, ox, oy = _grid_extent(items, wsi_path, tile_size_px, pixel_size_um)
     cells = {}
     for c, hpc in items:
-        col, row = int(round(c[0])) - x0, int(round(c[1])) - y0
-        cells[f"{col},{row}"] = int(hpc)
-    return {"ncols": ncols, "nrows": nrows, "x0": x0, "y0": y0, "cells": cells}
+        col, row = int(round(c[0])) - ox, int(round(c[1])) - oy
+        if 0 <= row < nrows and 0 <= col < ncols:
+            cells[f"{col},{row}"] = int(hpc)
+    return {"ncols": ncols, "nrows": nrows, "x0": ox, "y0": oy, "cells": cells}
 
 
 def hpc_composition(work, dataset, slide_id):

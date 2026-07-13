@@ -74,11 +74,12 @@
   .hint{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin:.2rem 0 1rem}
 
   .hpc-total{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-bottom:.5rem}
-  .hpc-row{display:grid;grid-template-columns:64px 1fr 44px;align-items:center;gap:.5rem;margin-bottom:.28rem}
+  .hpc-row{display:grid;grid-template-columns:64px 1fr 44px;align-items:center;gap:.5rem;margin-bottom:.28rem;cursor:default}
   .hpc-label{font-family:var(--mono);font-size:.72rem;color:var(--ink)}
   .hpc-track{background:var(--bg);border:1px solid var(--line);border-radius:5px;height:14px;overflow:hidden}
   .hpc-fill{height:100%;border-radius:4px 5px 5px 4px}
   .hpc-val{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .hpc-desc{font-size:.72rem;color:var(--muted);margin:0 0 .55rem 64px;line-height:1.4}
   .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.2rem}
   @media (max-width:860px){.two{grid-template-columns:1fr}}
 
@@ -87,9 +88,16 @@
     padding:.3rem .55rem;border-radius:6px;box-shadow:var(--shadow);max-width:260px}
   @media (prefers-color-scheme:dark){.hpc-tooltip{background:var(--paper);color:var(--ink);border:1px solid var(--line)}}
 
+  .osd{position:relative}
+  .hpc-highlight{position:absolute;pointer-events:none;display:none;box-sizing:border-box;
+    border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.65),0 0 6px rgba(0,0,0,.5);
+    border-radius:2px;z-index:5}
+
   .atlas-list{display:flex;flex-direction:column;gap:.6rem}
-  .atlas-row{display:grid;grid-template-columns:14px 1fr;gap:.6rem;align-items:start;padding:.4rem 0;border-bottom:1px solid var(--line)}
+  .atlas-row{display:grid;grid-template-columns:14px 56px 1fr;gap:.6rem;align-items:start;padding:.4rem 0;border-bottom:1px solid var(--line)}
   .atlas-swatch{width:14px;height:14px;border-radius:4px;margin-top:.2rem;flex:none}
+  .atlas-thumb{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:var(--bg)}
+  .atlas-thumb-ph{width:56px;height:56px}
   .atlas-name{font-size:.85rem;margin-bottom:.15rem}
   .atlas-desc{font-size:.78rem;color:var(--muted)}
 </style>
