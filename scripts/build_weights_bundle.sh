@@ -32,8 +32,8 @@ DEST="${REPO_ROOT}/weights_bundle"
 PYTHON="${PANCOLON_PYTHON:-python}"
 
 # ---- EDIT ME: source locations of the real trained files -----------------
-HPL_INSTALL="${HPL_INSTALL:-/gpfs/data/tsirigoslab/home/leh06/Histomorphological-Phenotype-Learning}"
-SURVCLAM_RUNS_SRC="${SURVCLAM_RUNS_SRC:-/gpfs/scratch/leh06/CLAMFamily/runs}"
+HPL_INSTALL="${HPL_INSTALL:-/path/to/Histomorphological-Phenotype-Learning}"
+SURVCLAM_RUNS_SRC="${SURVCLAM_RUNS_SRC:-/path/to/CLAMFamily/runs}"
 # The reference dataset whose clustering + encoder we ship (its name appears in
 # the source filenames):
 REF_DATASET="${REF_DATASET:-colon_cancer_20x_250K}"

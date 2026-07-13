@@ -214,7 +214,7 @@ pancolon/                 orchestration package (config, steps, CHiPS aggregatio
                           export, per-slide overlay rendering)
 viewer/                   the static browser viewer copied into every results bundle
 docker/                   Dockerfile + Apptainer def + container README
-config/                   pipeline.yaml, container config, filled example
+config/                   container config + local-example template (copy to pipeline.yaml, gitignored)
 envs/                     the two conda env specs
 scripts/                  download_weights, run_local, build_weights_bundle, …
 vendor/                   code-only copies of DeepPATH / HPL / SurvCLAM (see VENDOR_MANIFEST.md)

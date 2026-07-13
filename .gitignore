@@ -24,8 +24,11 @@ results/
 *.mrxs
 *.pkl
 
-# Local config overrides
+# Local config overrides (each collaborator copies pipeline.local.example.yaml
+# to one of these and fills in their own paths -- never commit the filled-in
+# version, it carries machine/lab-specific paths)
 config/pipeline.local.yaml
+config/pipeline.yaml
 
 # Web app runtime artifacts
 webapp/_run_config.yaml

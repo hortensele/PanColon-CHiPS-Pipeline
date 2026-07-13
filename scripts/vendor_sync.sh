@@ -15,9 +15,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-DEEPPATH_SRC="${DEEPPATH_SRC:-/gpfs/data/tsirigoslab/home/leh06/PathGAN/DeepPATH}"
-HPL_SRC="${HPL_SRC:-/gpfs/data/tsirigoslab/home/leh06/Histomorphological-Phenotype-Learning}"
-SURVCLAM_SRC="${SURVCLAM_SRC:-/gpfs/scratch/leh06/CLAMFamily}"
+DEEPPATH_SRC="${DEEPPATH_SRC:-/path/to/DeepPATH}"
+HPL_SRC="${HPL_SRC:-/path/to/Histomorphological-Phenotype-Learning}"
+SURVCLAM_SRC="${SURVCLAM_SRC:-/path/to/CLAMFamily}"
 
 COMMON_EXCLUDES=(
   --exclude '.git' --exclude '__pycache__' --exclude '*.pyc'

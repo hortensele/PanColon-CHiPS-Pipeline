@@ -4,8 +4,7 @@
 #   conda env create -f envs/env_survclam.yml
 #   conda activate pancolon_survclam
 #
-# Reconstructed from the `clam_latest` environment
-# (/gpfs/scratch/leh06/07_CLAM/code/CLAM/clam_latest.sh, python 3.10 + torch).
+# Reconstructed from the lab's `clam_latest` environment (python 3.10 + torch).
 # ==========================================================================
 name: pancolon_survclam
 channels:
