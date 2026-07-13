@@ -1,3 +1,7 @@
+# Maintainer-only notes (Zenodo checklist, etc.) -- local reference, not for
+# the public repo
+MAINTAINING.md
+
 # Trained weights (downloaded separately, too large to track)
 weights/hpl/
 weights/survclam/

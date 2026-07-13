@@ -76,10 +76,7 @@ bash scripts/download_weights.sh
 ```
 
 This fetches and unpacks the HPL encoder, the reference Leiden clustering, and the
-16 SurvCLAM CHiPS fold checkpoints into `weights/` (~4 GB). The download URL is
-configured inside that script; if you get a "URL is not set" error the bundle
-hasn't been published yet — ask the maintainer for the Zenodo link (or see
-[For maintainers](#for-maintainers) to build it).
+16 SurvCLAM CHiPS fold checkpoints into `weights/` (~4 GB).
 
 ### 3. Run — pick one path
 
@@ -244,59 +241,6 @@ serves a per-image explorer with a live OpenSeadragon deep-zoom view of each WSI
 and a toggleable attention ⇄ HPC overlay. OpenSeadragon is vendored under
 `webapp/static/vendor/` — no internet needed at runtime. The downloaded weights
 must be reachable from the cluster.
-
----
-
-## For maintainers
-
-Content below is for whoever **publishes** the weights or refreshes the vendored
-tools — collaborators can ignore it.
-
-**Building the weights bundle for Zenodo.** `scripts/build_weights_bundle.sh
---config config/pipeline.yaml` assembles the publishable bundle from the source
-installs — the HPL encoder, the reference clustering (both anchor h5s + the
-`cohort`/`cohort_cleaned` fold-1 Leiden adatas + folds pickle), and the 16 DFS
-CHiPS fold checkpoints — into the `weights/` layout, verifies every file, writes
-`SHA256SUMS`, and tars `pancolon_chips_weights.tar.gz` ready to upload. It prints
-the tar's SHA256. Then set `PUBLIC_URL` and `EXPECTED_SHA256` in
-`scripts/download_weights.sh` so collaborators' `download_weights.sh` works. The
-source paths default to the lab installs and are overridable via env vars
-(`HPL_INSTALL`, `HPL_REF_DIR`, `SURVCLAM_RUNS_SRC`, …) at the top of the script.
-
-**Zenodo upload checklist.** Once `pancolon_chips_weights.tar.gz` is built:
-
-1. **New record** at https://zenodo.org/uploads → drag in
-   `pancolon_chips_weights.tar.gz` (2.3 GB; Zenodo allows up to 50 GB/record).
-2. **Upload type:** Dataset (or Software/Model if you prefer). **Title:**
-   `PanColon-CHiPS trained weights (HPL encoder + reference clustering + SurvCLAM DFS folds)`.
-3. **Authors / Creators:** you + co-authors, with ORCID and affiliation.
-4. **Description:** what the bundle contains and that it pairs with this repo —
-   e.g. "Trained weights for the PanColon-CHiPS inference pipeline
-   (github.com/hortensele/PanColon-CHiPS-Pipeline): HPL BarlowTwins_3 encoder, the
-   colon reference Leiden clustering (fold-1 adatas + anchor h5s + folds pickle),
-   and the 16 leave-one-institution-out SurvCLAM DFS CHiPS fold checkpoints.
-   Imaging-only; no clinical data. Unpack with scripts/download_weights.sh."
-5. **License:** pick one that matches the repo (e.g. MIT / CC-BY-4.0). Note the
-   weights derive from CLAM/DeepPATH/HPL-based training — keep it compatible with
-   those upstreams.
-6. **Version:** `v1.0.0` (use Zenodo's versioning for future re-uploads so the DOI
-   resolves to the latest while old versions stay pinned).
-7. **Related identifiers:** add the GitHub repo URL as "is supplement to".
-8. **Publish**, then copy the **file download URL** (the
-   `…/records/<id>/files/pancolon_chips_weights.tar.gz` link, *not* the record page)
-   into `PUBLIC_URL` in `scripts/download_weights.sh`. `EXPECTED_SHA256` is already
-   set to the built tar's hash — leave it. Commit + push that one edit.
-9. **Round-trip test:** in a clean checkout, run `bash scripts/download_weights.sh`
-   and confirm it downloads, passes the checksum, and unpacks into `weights/`.
-
-**Using an existing TF module instead of building `env_tiling`.** On a cluster
-that already provides the TensorFlow stack as a module, set `envs.tiling_module`
-in the config (it takes precedence over `envs.tiling`); the driver `module load`s
-it for steps 1–5 rather than `conda activate`. `envs.module_init` can point at a
-`modules.sh` if `module` isn't on PATH in non-interactive shells.
-
-**Refreshing the vendored tools.** `scripts/vendor_sync.sh` re-pulls the
-code-only copies of DeepPATH / HPL / SurvCLAM; see `vendor/VENDOR_MANIFEST.md`.
 
 ## Citation
 
