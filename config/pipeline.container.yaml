@@ -104,9 +104,10 @@ infer:
   pt_id_col: "slide_id"
   k: 16
   chips_folds: "all"
-  # Fixed low/intermediate/high cutpoints (colon_united patient-level OOF
-  # q33/q67 for the shipped _p4_big model) — see config/pipeline.yaml for detail.
-  chips_tertile_thresholds: [-1.0711, -0.2129]
+  # Fixed low/intermediate/high cutpoints: q33/q67 of the standardized 16-fold
+  # CHiPS ensemble score on the colon_united development cohort (shipped
+  # _p4_big model) — see pancolon/chips.py docstring for detail/regeneration.
+  chips_tertile_thresholds: [-0.411285, 0.369834]
 
 attention:
   which_sets: "test"

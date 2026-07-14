@@ -171,10 +171,15 @@ work_dir/
   bundle/                                       export  (the browser viewer)
 ```
 
-`chips_scores.csv` columns: `case_id, chips_score, chips_percentile,
-chips_tertile, n_folds, risk_fold0…`. **For stratification use `chips_percentile`
-or `chips_tertile`** (cohort-relative), since the raw score is an uncentered Cox
-log-hazard.
+`chips_scores.csv` columns: `case_id, chips_score, chips_tertile, n_folds,
+risk_fold0…`. `chips_score` is the CHiPS ensemble score: each of the 16
+leave-one-institution-out fold checkpoints scores every case, each fold's raw
+Cox log-hazard is standardized against its own development-cohort mean/std
+(folds have different offsets/scales, so this puts them on a common scale
+before averaging), and `chips_score` is the mean across folds. **For
+stratification use `chips_tertile`** — it applies FIXED cutpoints (the q33/q67
+of this same standardized score on the development cohort), so a "high" label
+means the same thing regardless of which other cases happen to be in this run.
 
 ### Scoring with vs. without outcomes
 
