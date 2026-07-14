@@ -390,8 +390,19 @@
       return;
     }
     const sorted = composition.slice().sort((a, b) => b.n_tiles - a.n_tiles);
-    const shown = sorted.slice(0, topN);
-    const rest = sorted.slice(topN);
+
+    // Risk-associated HPCs are clinically the point of this list -- always
+    // surface them even if a small presence would otherwise fold into
+    // "other" below the topN-by-tile-count cutoff.
+    const isRisky = (r) => {
+      const a = ATLAS[r.hpc];
+      return !!(a && (a.risk === "high" || a.risk === "low"));
+    };
+    const naturalTop = sorted.slice(0, topN);
+    const forcedExtra = sorted.filter((r) => isRisky(r) && !naturalTop.includes(r));
+    const shown = naturalTop.concat(forcedExtra).sort((a, b) => b.n_tiles - a.n_tiles);
+    const shownSet = new Set(shown);
+    const rest = sorted.filter((r) => !shownSet.has(r));
     if (rest.length) shown.push({
       hpc: "other", color: "var(--muted)",
       n_tiles: rest.reduce((s, r) => s + r.n_tiles, 0),
