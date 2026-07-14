@@ -103,14 +103,12 @@ def _write_hpc_atlas(cfg, out_root):
         desc = (r.get("description") or "").strip()
         name = desc.split(" - ", 1)[0].strip() if " - " in desc else desc
         risk = (r.get("risk") or "").strip().lower()
-        tier = (r.get("tier") or "").strip().lower()
         entry = {
             "hpc": hpc, "id": raw_id, "name": name, "description": desc,
             "color": ov.hpc_hex(hpc),
         }
         if risk in ("high", "low"):
             entry["risk"] = risk
-            entry["tier"] = tier if tier in ("primary", "secondary") else "primary"
         example = _find_example_image(examples_dir, raw_id)
         if example:
             dst_dir = os.path.join(out_root, "hpc_examples")
