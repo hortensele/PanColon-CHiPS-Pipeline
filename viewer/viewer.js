@@ -67,10 +67,19 @@
           ? `<img class="atlas-thumb" src="${a.image}" alt="HPC ${a.hpc} example tile">`
           : '<span class="atlas-thumb-ph"></span>'}
         <div class="atlas-body">
-          <div class="atlas-name"><b>HPC ${a.hpc}</b> — ${escapeHtml(a.name || "")}</div>
+          <div class="atlas-name"><b>HPC ${a.hpc}</b> — ${escapeHtml(a.name || "")}${riskBadge(a.risk)}</div>
           <div class="atlas-desc">${escapeHtml(a.description || "")}</div>
         </div>
       </div>`).join("");
+  }
+
+  // Cohort-level finding (not recomputed per run): these HPCs correlate with
+  // survival risk in the reference cohort's own analysis, and SurvCLAM gives
+  // them elevated attention -- i.e. they're not just descriptive clusters,
+  // they're what the model is actually keying on.
+  function riskBadge(risk) {
+    if (risk !== "high" && risk !== "low") return "";
+    return ` <span class="pill ${risk}">${risk} risk</span> <span class="risk-note">elevated SurvCLAM attention</span>`;
   }
 
   function escapeHtml(s) {
@@ -412,6 +421,12 @@
       val.className = "hpc-val"; val.textContent = (r.frac * 100).toFixed(1) + "%";
       row.append(label, track, val);
       container.appendChild(row);
+      if (a && (a.risk === "high" || a.risk === "low")) {
+        const badge = document.createElement("div");
+        badge.className = "hpc-risk-line";
+        badge.innerHTML = riskBadge(a.risk).trim();
+        container.appendChild(badge);
+      }
       if (a && a.description) {
         const desc = document.createElement("div");
         desc.className = "hpc-desc";
