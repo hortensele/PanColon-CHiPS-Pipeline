@@ -74,12 +74,11 @@
   }
 
   // Cohort-level finding (not recomputed per run): these HPCs correlate with
-  // survival risk in the reference cohort's own analysis, and SurvCLAM gives
-  // them elevated attention -- i.e. they're not just descriptive clusters,
-  // they're what the model is actually keying on.
+  // survival risk in the reference cohort's own analysis -- i.e. they're not
+  // just descriptive clusters, they're what the model is actually keying on.
   function riskBadge(risk) {
     if (risk !== "high" && risk !== "low") return "";
-    return ` <span class="pill ${risk}">${risk} risk</span> <span class="risk-note">elevated SurvCLAM attention</span>`;
+    return ` <span class="pill ${risk}">${risk} risk</span>`;
   }
 
   function escapeHtml(s) {
@@ -399,7 +398,11 @@
       return !!(a && (a.risk === "high" || a.risk === "low"));
     };
     const naturalTop = sorted.slice(0, topN);
-    const forcedExtra = sorted.filter((r) => isRisky(r) && !naturalTop.includes(r));
+    // Only force in a risk HPC if it'd actually show as nonzero (matches the
+    // same 1-decimal rounding as the displayed percentage) -- a badge next
+    // to a bar reading "0.0%" would look contradictory.
+    const forcedExtra = sorted.filter((r) => isRisky(r) && !naturalTop.includes(r) &&
+      parseFloat((r.frac * 100).toFixed(1)) > 0);
     const shown = naturalTop.concat(forcedExtra).sort((a, b) => b.n_tiles - a.n_tiles);
     const shownSet = new Set(shown);
     const rest = sorted.filter((r) => !shownSet.has(r));
