@@ -335,17 +335,28 @@
   // Propagate viewport center+zoom from whichever viewer the user drives to the
   // others. All layers share the same normalized extent, so this keeps the three
   // panels aligned. A reentrancy guard stops the echo.
+  //
+  // OSD's "zoom"/"pan" viewer events fire exactly ONCE per zoomTo/panTo call —
+  // synchronously, at the moment the gesture starts — not once per animation
+  // frame as the value springs toward its target. So the *current* (mid-
+  // animation) zoom/center via getZoom(true)/getCenter(true) is still the OLD
+  // value at that instant; reading it (as this used to) propagates a no-op
+  // while the driven viewer keeps animating on its own with no further events
+  // to catch it. Reading the animation TARGET (no "current" flag) instead
+  // gets where the gesture is headed, and animating the other two viewers to
+  // that same target (not snapping instantly) keeps all three moving in
+  // visual lockstep.
   function syncViewers() {
     viewers.forEach((v) => {
       const push = () => {
         if (syncing) return;
         syncing = true;
-        const c = v.viewport.getCenter(true);
-        const z = v.viewport.getZoom(true);
+        const c = v.viewport.getCenter();
+        const z = v.viewport.getZoom();
         viewers.forEach((o) => {
           if (o === v) return;
-          o.viewport.zoomTo(z, null, true);
-          o.viewport.panTo(c, true);
+          o.viewport.zoomTo(z);
+          o.viewport.panTo(c);
         });
         syncing = false;
         paintHighlights();
